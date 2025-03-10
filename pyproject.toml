@@ -1,0 +1,83 @@
+[build-system]
+requires = ["setuptools>=48", "setuptools_scm[toml]>=6.3.1"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "memory-foam"
+description = "Read the contents of files from S3, GCS and Azure into memory"
+readme = "README.md"
+license = {text = "Apache-2.0"}
+authors = [{name = "Matt Seddon", email = "mattseddon@hotmail.com"}]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Development Status :: 2 - Pre-Alpha"
+]
+requires-python = ">=3.9"
+dynamic = ["version"]
+dependencies = [
+  "fsspec>=2024.2.0",
+  "s3fs>=2024.2.0",
+  "gcsfs>=2024.2.0",
+  "adlfs>=2024.2.0",
+  "tqdm"
+]
+
+[project.optional-dependencies]
+tests = [
+  "pytest>=8,<9",
+  "pytest-sugar>=0.9.6",
+  "pytest-cov>=4.1.0",
+  "pytest-mock>=3.12.0",
+  "pytest-servers[all]>=0.5.9",
+  "hypothesis"
+]
+dev = [
+  "mypy==1.15.0"
+]
+
+[project.urls]
+Documentation = "https://github.com/mattseddon/memory-foam"
+Issues = "https://github.com/mattseddon/memory-foam/issues"
+Source = "https://github.com/mattseddon/memory-foam"
+
+[tool.setuptools_scm]
+
+[tool.pytest.ini_options]
+
+[tool.coverage.run]
+branch = true
+source = ["memory_foam", "tests"]
+
+[tool.coverage.paths]
+source = ["src", "*/site-packages"]
+
+[tool.coverage.report]
+show_missing = true
+
+[tool.mypy]
+files = ["src", "tests"]
+ignore_missing_imports = true
+
+[tool.codespell]
+ignore-words-list = " "
+
+[tool.ruff]
+show-fixes = true
+
+[tool.ruff.lint]
+preview = true
+explicit-preview-rules = true
+
+[tool.ruff.lint.flake8-type-checking]
+strict = true
+
+[tool.ruff.lint.mccabe]
+max-complexity = 15
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
