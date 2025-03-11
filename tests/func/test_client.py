@@ -11,60 +11,60 @@ utc = timezone.utc
 
 ENTRIES = [
     File(
-        DEFAULT_TREE.get("description"),
         source="",
         path="description",
         version="7e589b7d-382c-49a5-931f-2b999c930c5e",
         last_modified=datetime(2023, 2, 27, 18, 28, 54, tzinfo=utc),
         size=13,
+        contents=DEFAULT_TREE.get("description"),
     ),
     File(
-        DEFAULT_TREE.get("trees", {}).get("oak.jpeg"),
         source="",
         path="trees/oak.jpeg",
         version="309eb4a4-bba9-47c1-afcd-d7c51110af6f",
         last_modified=datetime(2023, 2, 27, 18, 28, 54, tzinfo=utc),
         size=4,
+        contents=DEFAULT_TREE.get("trees", {}).get("oak.jpeg"),
     ),
     File(
-        DEFAULT_TREE.get("trees", {}).get("pine.jpeg"),
         source="",
         path="trees/pine.jpeg",
         version="f9d168d3-6d1b-47ef-8f6a-81fce48de141",
         last_modified=datetime(2023, 2, 27, 18, 28, 54, tzinfo=utc),
         size=4,
+        contents=DEFAULT_TREE.get("trees", {}).get("pine.jpeg"),
     ),
     File(
-        DEFAULT_TREE.get("books", {}).get("book1.txt"),
         source="",
         path="books/book1.txt",
         version="b9c31cf7-d011-466a-bf16-cf9da0cb422a",
         last_modified=datetime(2023, 2, 27, 18, 28, 54, tzinfo=utc),
         size=4,
+        contents=DEFAULT_TREE.get("books", {}).get("book1.txt"),
     ),
     File(
-        DEFAULT_TREE.get("books", {}).get("book2.txt"),
         path="books/book2.txt",
         source="",
         version="3a8bb6d9-38db-47a8-8bcb-8972ea95aa20",
         last_modified=datetime(2023, 2, 27, 18, 28, 54, tzinfo=utc),
         size=3,
+        contents=DEFAULT_TREE.get("books", {}).get("book2.txt"),
     ),
     File(
-        DEFAULT_TREE.get("books", {}).get("book3.txt"),
         source="",
         path="books/book3.txt",
         version="ee49e963-36a8-492a-b03a-e801b93afb40",
         last_modified=datetime(2023, 2, 27, 18, 28, 54, tzinfo=utc),
         size=4,
+        contents=DEFAULT_TREE.get("books", {}).get("book3.txt"),
     ),
     File(
-        DEFAULT_TREE.get("books", {}).get("others", {}).get("book4.txt"),
         source="",
         path="books/others/book4.txt",
         version="c5969421-6900-4060-bc39-d54f4a49b9fc",
         last_modified=datetime(2023, 2, 27, 18, 28, 54, tzinfo=utc),
         size=4,
+        contents=DEFAULT_TREE.get("books", {}).get("others", {}).get("book4.txt"),
     ),
 ]
 
@@ -80,7 +80,6 @@ _non_null_text = st.text(
 
 
 def normalize_entries(entries):
-    print(entries)
     return {(e.path, e.contents) for e in entries}
 
 
@@ -103,8 +102,8 @@ def test_parse_url(cloud_server, rel_path):
 def iter_file_contents(client, prefix):
     async def find(client, prefix):
         results = []
-        async for entries in client.iter_file_contents(prefix):
-            results.extend(entries)
+        async for entry in client.iter_file_contents(prefix):
+            results.append(entry)
         return results
 
     return sync(get_loop(), find, client, prefix)

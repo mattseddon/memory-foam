@@ -4,10 +4,11 @@ from dataclasses import dataclass
 from datetime import datetime
 import multiprocessing
 import os
-from typing import Any, AsyncIterator, ClassVar, Optional, Sequence
+from typing import Any, AsyncIterator, ClassVar, Optional
 from fsspec.asyn import get_loop
 from fsspec.spec import AbstractFileSystem
 from urllib.parse import urlparse
+from tqdm.auto import tqdm
 
 DELIMITER = "/"  # Path delimiter.
 FETCH_WORKERS = 100
@@ -28,15 +29,21 @@ class File:
             Defaults to Unix epoch (`1970-01-01T00:00:00`).
     """
 
-    contents: bytes
     source: str
     path: str
     size: int
     version: str
     last_modified: datetime
 
+    contents: Optional[bytes] = None
 
-ResultQueue = asyncio.Queue[Optional[Sequence[File]]]
+    _content_task: Optional[asyncio.Task] = None
+
+    def set_contents(self, b: bytes):
+        self.contents = b
+
+
+ResultQueue = asyncio.Queue[Optional[asyncio.Task[File]]]
 
 
 class ClientError(RuntimeError):
@@ -59,7 +66,7 @@ class Client(ABC):
         self.uri = self.get_uri(self.name)
 
     @abstractmethod
-    async def info_to_file(self, v: dict[str, Any], path: str) -> "File": ...
+    def info_to_file(self, v: dict[str, Any], path: str) -> "File": ...
 
     @classmethod
     def create_fs(cls, **kwargs) -> "AbstractFileSystem":
@@ -67,6 +74,9 @@ class Client(ABC):
         fs = cls.FS_CLASS(**kwargs)
         fs.invalidate_cache()
         return fs
+
+    @abstractmethod
+    def close(self) -> None: ...
 
     @property
     def fs(self) -> AbstractFileSystem:
@@ -135,15 +145,29 @@ class Client(ABC):
     def version_path(cls, path: str, version_id: Optional[str]) -> str:
         return path
 
-    async def iter_file_contents(
-        self, start_prefix: str
-    ) -> AsyncIterator[Sequence["File"]]:
-        result_queue: ResultQueue = asyncio.Queue()
+    async def iter_file_contents(self, start_prefix: str) -> AsyncIterator[File]:
+        result_queue: ResultQueue = asyncio.Queue(64)
         loop = get_loop()
         main_task = loop.create_task(self._fetch(start_prefix, result_queue))
-        while (entry := await result_queue.get()) is not None:
-            yield entry
+
+        tasks = []
+        while (task := await result_queue.get()) is not None:
+            tasks.append(task)
+
+        with tqdm(
+            desc=f"Processing {self.uri}/{start_prefix}",
+            unit=" objects",
+            total=len(tasks),
+        ) as pbar:
+            for next_completed in asyncio.as_completed(tasks):
+                file = await next_completed
+                yield file
+                pbar.update(1)
+
         await main_task
+
+    @abstractmethod
+    async def read(self, path, version) -> bytes: ...
 
     @abstractmethod
     async def _fetch(self, start_prefix: str, result_queue: ResultQueue) -> None: ...

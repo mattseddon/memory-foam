@@ -1,9 +1,9 @@
 import asyncio
 from typing import Any, Optional, cast
 from s3fs import S3FileSystem
-from tqdm.auto import tqdm
 
 from .fsspec import DELIMITER, Client, File, ResultQueue
+from fsspec.asyn import get_loop
 
 from botocore.exceptions import NoCredentialsError
 
@@ -33,7 +33,6 @@ class ClientS3(Client):
 
         if "region_name" in kwargs:
             kwargs["config_kwargs"].setdefault("region_name", kwargs.pop("region_name"))
-
         if not kwargs.get("anon"):
             try:
                 # Run an inexpensive check to see if credentials are available
@@ -43,7 +42,10 @@ class ClientS3(Client):
             except NotImplementedError:
                 pass
 
-        return cast(S3FileSystem, super().create_fs(**kwargs))
+        return cast(S3FileSystem, super().create_fs(**kwargs, asynchronous=True))
+
+    def close(self):
+        self.fs.close_session(get_loop(), self.s3)
 
     async def _fetch(self, start_prefix: str, result_queue: ResultQueue) -> None:
         async def get_pages(it, page_queue):
@@ -53,20 +55,39 @@ class ClientS3(Client):
             finally:
                 await page_queue.put(None)
 
+        async def process_file(file: File) -> File:
+            contents = await self.read(file.path, file.version)
+            file.set_contents(contents)
+            return file
+
         async def process_pages(page_queue, result_queue):
-            found = False
-            with tqdm(desc=f"Listing {self.uri}", unit=" objects", leave=False) as pbar:
+            try:
+                found = False
+
                 while (res := await page_queue.get()) is not None:
                     if res:
                         found = True
-                    entries = [
-                        await self.info_to_file(d, d["Key"])
-                        for d in res
-                        if self._is_valid_key(d["Key"])
-                    ]
-                    if entries:
-                        await result_queue.put(entries)
-                        pbar.update(len(entries))
+                    for d in res:
+                        if not self._is_valid_key(d["Key"]):
+                            continue
+                        file = self.info_to_file(d, d["Key"])
+                        task = asyncio.ensure_future(process_file(file))
+                        await result_queue.put(task)
+
+                if not found:
+                    raise FileNotFoundError(f"Unable to resolve remote path: {prefix}")
+            finally:
+                await result_queue.put(None)
+
+        async def process_files(file_queue, result_queue):
+            found = False
+
+            while (file := await file_queue.get()) is not None:
+                if file:
+                    found = True
+                task = asyncio.ensure_future(process_file(file))
+                await result_queue.put(task)
+
             if not found:
                 raise FileNotFoundError(f"Unable to resolve remote path: {prefix}")
 
@@ -77,26 +98,26 @@ class ClientS3(Client):
             versions = True
             fs = self.fs
             await fs.set_session()
-            s3 = await fs.get_s3(self.name)
+            self.s3 = await fs.get_s3(self.name)
             if versions:
                 method = "list_object_versions"
                 contents_key = "Versions"
             else:
                 method = "list_objects_v2"
                 contents_key = "Contents"
-            pag = s3.get_paginator(method)
+            pag = self.s3.get_paginator(method)
             it = pag.paginate(
                 Bucket=self.name,
                 Prefix=prefix,
                 Delimiter="",
             )
             page_queue: asyncio.Queue[list] = asyncio.Queue(2)
-            consumer = asyncio.create_task(process_pages(page_queue, result_queue))
+            page_consumer = asyncio.create_task(process_pages(page_queue, result_queue))
             try:
                 await get_pages(it, page_queue)
-                await consumer
+                await page_consumer
             finally:
-                consumer.cancel()  # In case get_pages() raised
+                page_consumer.cancel()  # In case get_pages() raised
         finally:
             result_queue.put_nowait(None)
 
@@ -105,15 +126,13 @@ class ClientS3(Client):
             return ""
         return ver
 
-    async def _read(self, path, version) -> bytes:
+    async def read(self, path, version) -> bytes:
         stream = await self.fs.open_async(self.get_full_path(path, version))
         return await stream.read()
 
-    async def info_to_file(self, v: dict[str, Any], path: str) -> File:
+    def info_to_file(self, v: dict[str, Any], path: str) -> File:
         version = self._clean_s3_version(v.get("VersionId", ""))
-        contents = await self._read(path, version)
         return File(
-            contents,
             source=self.uri,
             path=v["Key"],
             size=v["Size"],
