@@ -7,7 +7,6 @@
 - **Unified Interface**: Seamlessly interact with files stored in S3, GCS, and Azure using a consistent API.
 - **Asynchronous Support**: Efficiently load files using asynchronous iterators.
 - **Version Awareness**: Handle different versions of files with ease.
-- todo or remote - **Progress Tracking**: Monitor file loading progress with integrated progress bars.
 
 ## Installation
 

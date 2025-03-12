@@ -24,7 +24,6 @@ dependencies = [
   "s3fs>=2024.2.0",
   "gcsfs>=2024.2.0",
   "adlfs>=2024.2.0",
-  "tqdm"
 ]
 
 [project.optional-dependencies]
@@ -37,7 +36,13 @@ tests = [
   "hypothesis"
 ]
 dev = [
+  "memory_foam[tests]",
   "mypy==1.15.0"
+]
+examples = [
+  "pillow",
+  "ultralytics",
+  "tqdm"
 ]
 
 [project.urls]
