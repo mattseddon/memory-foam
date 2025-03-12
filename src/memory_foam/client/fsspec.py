@@ -5,7 +5,6 @@ import os
 from typing import Any, AsyncIterator, ClassVar, Optional
 from fsspec.spec import AbstractFileSystem
 from urllib.parse import urlparse
-from tqdm.auto import tqdm
 
 from ..file import File
 from ..asyn import get_loop
@@ -120,12 +119,8 @@ class Client(ABC):
         loop = get_loop()
         main_task = loop.create_task(self._fetch(start_prefix, result_queue))
 
-        with tqdm(
-            desc=f"Processing {self.uri}/{start_prefix}", unit=" objects"
-        ) as pbar:
-            while (file := await result_queue.get()) is not None:
-                yield file
-                pbar.update(1)
+        while (file := await result_queue.get()) is not None:
+            yield file
 
         await main_task
 

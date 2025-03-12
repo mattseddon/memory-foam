@@ -65,7 +65,7 @@ class ClientS3(Client):
             async def _read_file(pointer: FilePointer) -> File:
                 async with max_concurrent_reads:
                     contents = await self._read(pointer.path, pointer.version)
-                    return File.from_read_pointer(contents, pointer)
+                    return (pointer, contents)
 
             try:
                 found = False
@@ -78,7 +78,7 @@ class ClientS3(Client):
                     for d in res:
                         if not self._is_valid_key(d["Key"]):
                             continue
-                        pointer = self._info_to_file(d, d["Key"])
+                        pointer = self._info_to_file_pointer(d)
                         task = queue_task_result(
                             _read_file(pointer), result_queue, loop
                         )
@@ -124,7 +124,10 @@ class ClientS3(Client):
         stream = await self.fs.open_async(self.get_full_path(path, version))
         return await stream.read()
 
-    def _info_to_file(self, v: dict[str, Any], path: str) -> FilePointer:
+    def _info_to_file_pointer(
+        self,
+        v: dict[str, Any],
+    ) -> FilePointer:
         version = self._clean_s3_version(v.get("VersionId", ""))
         return FilePointer(
             source=self.uri,
