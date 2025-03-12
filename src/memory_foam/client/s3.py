@@ -48,6 +48,8 @@ class ClientS3(Client):
         self.fs.close_session(get_loop(), self.s3)
 
     async def _fetch(self, start_prefix: str, result_queue: ResultQueue) -> None:
+        loop = get_loop()
+
         async def get_pages(it, page_queue):
             try:
                 async for page in it:
@@ -55,41 +57,41 @@ class ClientS3(Client):
             finally:
                 await page_queue.put(None)
 
-        async def process_file(file: File) -> File:
-            contents = await self.read(file.path, file.version)
-            file.set_contents(contents)
-            return file
-
         async def process_pages(page_queue, result_queue):
+            async def process_file(file: File) -> File:
+                contents = await self.read(file.path, file.version)
+                file.set_contents(contents)
+                return file
+
+            async def _on_completion(file: File):
+                await result_queue.put(file)
+
+            async def add_success_callback(fut, callback):
+                result = await fut
+                await callback(result)
+                return result
+
             try:
                 found = False
 
                 while (res := await page_queue.get()) is not None:
                     if res:
                         found = True
+
+                    tasks = []
                     for d in res:
                         if not self._is_valid_key(d["Key"]):
                             continue
                         file = self.info_to_file(d, d["Key"])
-                        task = asyncio.ensure_future(process_file(file))
-                        await result_queue.put(task)
+                        task = asyncio.ensure_future(process_file(file), loop=loop)
+                        task = add_success_callback(task, _on_completion)
+                        tasks.append(task)
+                    await asyncio.gather(*tasks)
 
                 if not found:
                     raise FileNotFoundError(f"Unable to resolve remote path: {prefix}")
             finally:
                 await result_queue.put(None)
-
-        async def process_files(file_queue, result_queue):
-            found = False
-
-            while (file := await file_queue.get()) is not None:
-                if file:
-                    found = True
-                task = asyncio.ensure_future(process_file(file))
-                await result_queue.put(task)
-
-            if not found:
-                raise FileNotFoundError(f"Unable to resolve remote path: {prefix}")
 
         try:
             prefix = start_prefix
@@ -111,8 +113,8 @@ class ClientS3(Client):
                 Prefix=prefix,
                 Delimiter="",
             )
-            page_queue: asyncio.Queue[list] = asyncio.Queue(2)
-            page_consumer = asyncio.create_task(process_pages(page_queue, result_queue))
+            page_queue: ResultQueue = asyncio.Queue(2)
+            page_consumer = loop.create_task(process_pages(page_queue, result_queue))
             try:
                 await get_pages(it, page_queue)
                 await page_consumer

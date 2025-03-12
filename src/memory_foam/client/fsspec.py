@@ -37,13 +37,11 @@ class File:
 
     contents: Optional[bytes] = None
 
-    _content_task: Optional[asyncio.Task] = None
-
     def set_contents(self, b: bytes):
         self.contents = b
 
 
-ResultQueue = asyncio.Queue[Optional[asyncio.Task[File]]]
+ResultQueue = asyncio.Queue[Optional[File]]
 
 
 class ClientError(RuntimeError):
@@ -146,21 +144,14 @@ class Client(ABC):
         return path
 
     async def iter_file_contents(self, start_prefix: str) -> AsyncIterator[File]:
-        result_queue: ResultQueue = asyncio.Queue(64)
+        result_queue: ResultQueue = asyncio.Queue(200)
         loop = get_loop()
         main_task = loop.create_task(self._fetch(start_prefix, result_queue))
 
-        tasks = []
-        while (task := await result_queue.get()) is not None:
-            tasks.append(task)
-
         with tqdm(
-            desc=f"Processing {self.uri}/{start_prefix}",
-            unit=" objects",
-            total=len(tasks),
+            desc=f"Processing {self.uri}/{start_prefix}", unit=" objects"
         ) as pbar:
-            for next_completed in asyncio.as_completed(tasks):
-                file = await next_completed
+            while (file := await result_queue.get()) is not None:
                 yield file
                 pbar.update(1)
 
