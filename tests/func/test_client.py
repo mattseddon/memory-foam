@@ -115,16 +115,16 @@ def test_parse_url(cloud_server, rel_path):
     assert rel_part == rel_path
 
 
-def iter_file_contents(client, prefix):
+def iter_files(client, prefix):
     async def find(client, prefix):
         results = []
-        async for entry in client.iter_file_contents(prefix):
+        async for entry in client.iter_files(prefix):
             results.append(entry)
         return results
 
     return sync(get_loop(), find, client, prefix)
 
 
-def test_iter_file_contents_success(client):
-    results = iter_file_contents(client, "")
+def test_iter_files_success(client):
+    results = iter_files(client, "")
     match_entries(results, ENTRIES)

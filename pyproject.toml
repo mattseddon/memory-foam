@@ -40,6 +40,7 @@ dev = [
   "mypy==1.15.0"
 ]
 examples = [
+  "dlt",
   "pillow",
   "ultralytics",
   "tqdm"

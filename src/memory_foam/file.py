@@ -21,5 +21,8 @@ class FilePointer:
     version: str
     last_modified: datetime
 
+    def to_dict_with(self, d: dict):
+        return {**asdict(self), **d}
+
 
 File = tuple[FilePointer, bytes]

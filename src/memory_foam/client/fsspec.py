@@ -114,7 +114,7 @@ class Client(ABC):
     def version_path(cls, path: str, version_id: Optional[str]) -> str:
         return path
 
-    async def iter_file_contents(self, start_prefix: str) -> AsyncIterator[File]:
+    async def iter_files(self, start_prefix: str) -> AsyncIterator[File]:
         result_queue: ResultQueue = asyncio.Queue(200)
         loop = get_loop()
         main_task = loop.create_task(self._fetch(start_prefix, result_queue))
