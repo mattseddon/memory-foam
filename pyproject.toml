@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "memory-foam"
-description = "Read the contents of files from S3, GCS and Azure into memory"
+description = "Read the contents of files from S3 into memory"
 readme = "README.md"
 license = {text = "Apache-2.0"}
 authors = [{name = "Matt Seddon", email = "mattseddon@hotmail.com"}]
@@ -40,7 +40,7 @@ dev = [
   "mypy==1.15.0"
 ]
 examples = [
-  "dlt",
+  "dlt[duckdb]",
   "pillow",
   "ultralytics",
   "tqdm"
