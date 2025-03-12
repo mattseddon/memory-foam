@@ -1,8 +1,8 @@
-from memory_foam import get_entries
+from memory_foam import get_entries, File
 
 
 if __name__ == "__main__":
-    s = set()
+    s: set[File] = set()
     uri = "s3://ldb-public/remote/data-lakes/ISIA_500/Croissant"
     for file in get_entries(uri, {"anon": True}):
         s.add(file.path)

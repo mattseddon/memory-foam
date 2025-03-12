@@ -1,45 +1,20 @@
 from abc import ABC, abstractmethod
 import asyncio
-from dataclasses import dataclass
-from datetime import datetime
 import multiprocessing
 import os
 from typing import Any, AsyncIterator, ClassVar, Optional
-from memory_foam.asyn import get_loop
 from fsspec.spec import AbstractFileSystem
 from urllib.parse import urlparse
 from tqdm.auto import tqdm
+
+from ..file import File
+from ..asyn import get_loop
 
 DELIMITER = "/"  # Path delimiter.
 FETCH_WORKERS = 100
 
 
-@dataclass
-class File:
-    """
-    `DataModel` for reading binary files.
-
-    Attributes:
-        source (str): The source of the file (e.g., 's3://bucket-name/').
-        contents (bytes): The contents of the file,
-        path (str): The path to the file (e.g., 'path/to/file.txt').
-        size (int): The size of the file in bytes. Defaults to 0.
-        version (str): The version of the file. Defaults to an empty string.
-        last_modified (datetime): The last modified timestamp of the file.
-            Defaults to Unix epoch (`1970-01-01T00:00:00`).
-    """
-
-    source: str
-    path: str
-    size: int
-    version: str
-    last_modified: datetime
-
-    contents: Optional[bytes] = None
-
-    def set_contents(self, b: bytes):
-        self.contents = b
-
+# need to move to a new file
 
 ResultQueue = asyncio.Queue[Optional[File]]
 
@@ -62,9 +37,6 @@ class Client(ABC):
         self.fs_kwargs = fs_kwargs
         self._fs: Optional[AbstractFileSystem] = None
         self.uri = self.get_uri(self.name)
-
-    @abstractmethod
-    def info_to_file(self, v: dict[str, Any], path: str) -> "File": ...
 
     @classmethod
     def create_fs(cls, **kwargs) -> "AbstractFileSystem":
@@ -156,9 +128,6 @@ class Client(ABC):
                 pbar.update(1)
 
         await main_task
-
-    @abstractmethod
-    async def read(self, path, version) -> bytes: ...
 
     @abstractmethod
     async def _fetch(self, start_prefix: str, result_queue: ResultQueue) -> None: ...

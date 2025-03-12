@@ -1,7 +1,7 @@
 import asyncio
 
 from fsspec.asyn import get_loop
-from typing import Any, AsyncIterable, Awaitable, Iterator, TypeVar
+from typing import AsyncIterable, Awaitable, Iterator, TypeVar
 
 T = TypeVar("T")
 

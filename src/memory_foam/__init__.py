@@ -1,7 +1,7 @@
 from typing import Iterator, Optional
 from .client import Client
 
-from .client.fsspec import File
+from .file import File
 from .asyn import iter_over_async, get_loop
 
 
@@ -16,4 +16,4 @@ def get_entries(uri: str, client_config: Optional[dict]) -> Iterator[File]:
     client.close()
 
 
-__all__ = ["get_entries"]
+__all__ = ["get_entries", "File"]

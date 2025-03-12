@@ -2,9 +2,10 @@ import asyncio
 from typing import Any, Optional, cast
 from s3fs import S3FileSystem
 
-from memory_foam.asyn import queue_task_result, get_loop
 
-from .fsspec import DELIMITER, Client, File, ResultQueue
+from ..asyn import queue_task_result, get_loop
+from ..file import File, FilePointer
+from .fsspec import DELIMITER, Client, ResultQueue
 
 from botocore.exceptions import NoCredentialsError
 
@@ -61,11 +62,10 @@ class ClientS3(Client):
         async def process_pages(page_queue, result_queue):
             max_concurrent_reads = asyncio.Semaphore(32)
 
-            async def _read_file(file: File) -> File:
+            async def _read_file(pointer: FilePointer) -> File:
                 async with max_concurrent_reads:
-                    contents = await self.read(file.path, file.version)
-                    file.set_contents(contents)
-                    return file
+                    contents = await self._read(pointer.path, pointer.version)
+                    return File.from_read_pointer(contents, pointer)
 
             try:
                 found = False
@@ -78,8 +78,10 @@ class ClientS3(Client):
                     for d in res:
                         if not self._is_valid_key(d["Key"]):
                             continue
-                        file = self.info_to_file(d, d["Key"])
-                        task = queue_task_result(_read_file(file), result_queue, loop)
+                        pointer = self._info_to_file(d, d["Key"])
+                        task = queue_task_result(
+                            _read_file(pointer), result_queue, loop
+                        )
                         tasks.append(task)
                     await asyncio.gather(*tasks)
 
@@ -118,21 +120,21 @@ class ClientS3(Client):
         finally:
             result_queue.put_nowait(None)
 
-    def _clean_s3_version(self, ver: Optional[str]) -> str:
-        if ver is None or ver == "null":
-            return ""
-        return ver
-
-    async def read(self, path, version) -> bytes:
+    async def _read(self, path, version) -> bytes:
         stream = await self.fs.open_async(self.get_full_path(path, version))
         return await stream.read()
 
-    def info_to_file(self, v: dict[str, Any], path: str) -> File:
+    def _info_to_file(self, v: dict[str, Any], path: str) -> FilePointer:
         version = self._clean_s3_version(v.get("VersionId", ""))
-        return File(
+        return FilePointer(
             source=self.uri,
             path=v["Key"],
             size=v["Size"],
             version=version,
             last_modified=v.get("LastModified", ""),
         )
+
+    def _clean_s3_version(self, ver: Optional[str]) -> str:
+        if ver is None or ver == "null":
+            return ""
+        return ver
