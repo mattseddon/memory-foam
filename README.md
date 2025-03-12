@@ -7,7 +7,7 @@
 - **Unified Interface**: Seamlessly interact with files stored in S3, GCS, and Azure using a consistent API.
 - **Asynchronous Support**: Efficiently load files using asynchronous iterators.
 - **Version Awareness**: Handle different versions of files with ease.
-- **Progress Tracking**: Monitor file loading progress with integrated progress bars.
+- todo or remote - **Progress Tracking**: Monitor file loading progress with integrated progress bars.
 
 ## Installation
 
@@ -18,9 +18,6 @@ pip install memory-foam
 ```
 
 ## Example usage
-
-from memory_foam import get_entries, File
-
 
 ```python
 from io import BytesIO
