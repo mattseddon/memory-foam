@@ -57,11 +57,14 @@ class ClientS3(Client):
             finally:
                 await page_queue.put(None)
 
+        max_concurrent_reads = asyncio.Semaphore(20)
+
         async def process_pages(page_queue, result_queue):
             async def process_file(file: File) -> File:
-                contents = await self.read(file.path, file.version)
-                file.set_contents(contents)
-                return file
+                async with max_concurrent_reads:
+                    contents = await self.read(file.path, file.version)
+                    file.set_contents(contents)
+                    return file
 
             async def _on_completion(file: File):
                 await result_queue.put(file)
