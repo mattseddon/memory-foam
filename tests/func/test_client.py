@@ -3,7 +3,8 @@ import pytest
 from memory_foam.client.fsspec import Client, File
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
-from fsspec.asyn import sync, get_loop
+from memory_foam.asyn import get_loop
+from fsspec.asyn import sync
 
 from tests.conftest import DEFAULT_TREE
 

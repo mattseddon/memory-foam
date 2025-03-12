@@ -2,8 +2,9 @@ import asyncio
 from typing import Any, Optional, cast
 from s3fs import S3FileSystem
 
+from memory_foam.asyn import queue_task_result, get_loop
+
 from .fsspec import DELIMITER, Client, File, ResultQueue
-from fsspec.asyn import get_loop
 
 from botocore.exceptions import NoCredentialsError
 
@@ -57,22 +58,14 @@ class ClientS3(Client):
             finally:
                 await page_queue.put(None)
 
-        max_concurrent_reads = asyncio.Semaphore(20)
-
         async def process_pages(page_queue, result_queue):
-            async def process_file(file: File) -> File:
+            max_concurrent_reads = asyncio.Semaphore(32)
+
+            async def _read_file(file: File) -> File:
                 async with max_concurrent_reads:
                     contents = await self.read(file.path, file.version)
                     file.set_contents(contents)
                     return file
-
-            async def _on_completion(file: File):
-                await result_queue.put(file)
-
-            async def add_success_callback(fut, callback):
-                result = await fut
-                await callback(result)
-                return result
 
             try:
                 found = False
@@ -86,8 +79,7 @@ class ClientS3(Client):
                         if not self._is_valid_key(d["Key"]):
                             continue
                         file = self.info_to_file(d, d["Key"])
-                        task = asyncio.ensure_future(process_file(file), loop=loop)
-                        task = add_success_callback(task, _on_completion)
+                        task = queue_task_result(_read_file(file), result_queue, loop)
                         tasks.append(task)
                     await asyncio.gather(*tasks)
 

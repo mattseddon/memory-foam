@@ -5,7 +5,7 @@ from datetime import datetime
 import multiprocessing
 import os
 from typing import Any, AsyncIterator, ClassVar, Optional
-from fsspec.asyn import get_loop
+from memory_foam.asyn import get_loop
 from fsspec.spec import AbstractFileSystem
 from urllib.parse import urlparse
 from tqdm.auto import tqdm
