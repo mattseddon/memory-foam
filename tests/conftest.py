@@ -3,6 +3,8 @@ import pytest
 import attrs
 from upath.implementations.cloud import CloudPath
 
+from memory_foam.client import Client
+
 
 DEFAULT_TREE: dict[str, Any] = {
     "description": b"Images of trees and book texts",
@@ -114,3 +116,8 @@ def cloud_server(request, tmp_upath_factory, cloud_type, version_aware, tree):
     else:
         src_path = tmp_upath_factory.mktemp(cloud_type, version_aware=version_aware)
     return make_cloud_server(src_path, cloud_type, tree)
+
+
+@pytest.fixture
+def client(cloud_server, cloud_server_credentials):
+    return Client.get_client(cloud_server.src_uri, **cloud_server.client_config)
