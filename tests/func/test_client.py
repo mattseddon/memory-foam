@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 import pytest
 from memory_foam.client import Client
-from memory_foam.file import File, FilePointer
+from memory_foam.file import FilePointer
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 from memory_foam.asyn import get_loop
