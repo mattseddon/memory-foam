@@ -1,5 +1,10 @@
 # memory-foam
 
+
+[![pypi](https://img.shields.io/pypi/v/memory-foam.svg)](https://pypi.org/project/memory-foam/)
+[![tests](https://github.com/mattseddon/memory-foam/actions/workflows/tests.yml/badge.svg)](https://github.com/mattseddon/memory-foam/actions/workflows/tests.yml)
+[![codecov](https://codecov.io/gh/mattseddon/memory-foam/graph/badge.svg?token=7TT8YRWTV9)](https://codecov.io/gh/mattseddon/memory-foam)
+
 `memory-foam` is a Python package that provides a set of iterators to load the contents of files from s3 cloud storage into memory for easy processing.
 
 ## Features
