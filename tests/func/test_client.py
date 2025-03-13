@@ -1,11 +1,10 @@
 from datetime import datetime, timezone
 import pytest
+from memory_foam import iter_files
 from memory_foam.client import Client
 from memory_foam.file import FilePointer
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
-from memory_foam.asyn import get_loop
-from fsspec.asyn import sync
 
 from tests.conftest import DEFAULT_TREE
 
@@ -115,16 +114,7 @@ def test_parse_url(cloud_server, rel_path):
     assert rel_part == rel_path
 
 
-def iter_files(client, prefix):
-    async def find(client, prefix):
-        results = []
-        async for entry in client.iter_files(prefix):
-            results.append(entry)
-        return results
-
-    return sync(get_loop(), find, client, prefix)
-
-
-def test_iter_files_success(client):
-    results = iter_files(client, "")
+def test_iter_files_success(client, mocker):
+    mocker.patch("memory_foam.client.Client.get_client", return_value=client)
+    results = [file for file in iter_files("s3://fake-client/")]
     match_entries(results, ENTRIES)
