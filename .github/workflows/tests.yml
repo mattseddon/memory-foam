@@ -55,22 +55,21 @@ jobs:
 
 
   test:
+    needs: lint
     timeout-minutes: 10
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest-8-cores]
-        pyv: ['3.9', '3.10', '3.11', '3.12', '3.13']
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        pyv: ['3.9', '3.13']
         include:
-          - os: macos-latest
-            pyv: '3.9'
-          - os: macos-latest
-            pyv: '3.13'
-          - os: windows-latest
-            pyv: '3.9'
-          - os: windows-latest
-            pyv: '3.13'
+          - os: ubuntu-latest
+            pyv: '3.10'
+          - os: ubuntu-latest
+            pyv: '3.11'
+          - os: ubuntu-latest
+            pyv: '3.12'
 
     steps:
       - name: Check out the repository
