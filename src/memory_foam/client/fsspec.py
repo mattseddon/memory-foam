@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 import asyncio
 import multiprocessing
 import os
-from typing import Any, AsyncIterator, ClassVar, Optional
+from typing import Any, AsyncIterator, ClassVar, Iterable, Optional
 from fsspec.spec import AbstractFileSystem
 from urllib.parse import urlparse
 
@@ -13,9 +13,8 @@ DELIMITER = "/"  # Path delimiter.
 FETCH_WORKERS = 100
 
 
-# need to move to a new file
-
 ResultQueue = asyncio.Queue[Optional[File]]
+PageQueue = asyncio.Queue[Optional[Iterable[dict[str, Any]]]]
 
 
 class ClientError(RuntimeError):
@@ -27,7 +26,7 @@ class ClientError(RuntimeError):
 
 class Client(ABC):
     MAX_THREADS = multiprocessing.cpu_count()
-    FS_CLASS: ClassVar[AbstractFileSystem]
+    FS_CLASS: ClassVar[type["AbstractFileSystem"]]
     PREFIX: ClassVar[str]
     protocol: ClassVar[str]
 
@@ -58,6 +57,7 @@ class Client(ABC):
         # from .azure import AzureClient
         # from .gcs import GCSClient
         from .s3 import ClientS3
+        from .gcs import GCSClient
 
         protocol = urlparse(url).scheme
 
@@ -69,8 +69,8 @@ class Client(ABC):
         protocol = protocol.lower()
         if protocol == ClientS3.protocol:
             return ClientS3
-        # if protocol == GCSClient.protocol:
-        #     return GCSClient
+        if protocol == GCSClient.protocol:
+            return GCSClient
         # if protocol == AzureClient.protocol:
         #     return AzureClient
 
@@ -107,6 +107,9 @@ class Client(ABC):
         bucket = path_split[0]
         path = path_split[1] if len(path_split) > 1 else ""
         return bucket, path
+
+    def rel_path(self, path: str) -> str:
+        return self.fs.split_path(path)[1]
 
     def get_full_path(self, rel_path: str, version_id: Optional[str] = None) -> str:
         return self.version_path(f"{self.PREFIX}{self.name}/{rel_path}", version_id)

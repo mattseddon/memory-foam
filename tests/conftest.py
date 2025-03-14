@@ -57,7 +57,7 @@ class CloudServer:
         return str(self.src).rstrip("/")
 
 
-cloud_types = ["s3"]
+cloud_types = ["s3", "gs"]
 
 
 @pytest.fixture(scope="session", params=cloud_types)
@@ -73,8 +73,6 @@ def make_cloud_server(src_path, cloud_type, tree):
     elif cloud_type in ("gs", "gcs"):
         endpoint_url = fs._endpoint
         client_config = {"endpoint_url": endpoint_url}
-    elif cloud_type == "azure":
-        client_config = fs.storage_options.copy()
     else:
         raise ValueError(f"invalid cloud_type: {cloud_type}")
 
@@ -103,18 +101,7 @@ def cloud_server_credentials(cloud_server, monkeypatch):
 
 @pytest.fixture(scope="session")
 def cloud_server(request, tmp_upath_factory, cloud_type, version_aware, tree):
-    if cloud_type == "azure" and version_aware:
-        if conn_str := request.config.getoption("--azure-connection-string"):
-            src_path = tmp_upath_factory.azure(conn_str)
-        else:
-            pytest.skip("Can't test versioning with Azure")
-    elif cloud_type == "file":
-        if version_aware:
-            pytest.skip("Local storage can't be versioned")
-        else:
-            src_path = tmp_upath_factory.mktemp("local")
-    else:
-        src_path = tmp_upath_factory.mktemp(cloud_type, version_aware=version_aware)
+    src_path = tmp_upath_factory.mktemp(cloud_type, version_aware=version_aware)
     return make_cloud_server(src_path, cloud_type, tree)
 
 

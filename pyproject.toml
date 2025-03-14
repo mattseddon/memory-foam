@@ -21,7 +21,9 @@ requires-python = ">=3.9"
 dynamic = ["version"]
 dependencies = [
   "fsspec>=2024.2.0",
-  "s3fs>=2024.2.0"
+  "s3fs>=2024.2.0",
+  "gcsfs>=2024.2.0",
+  "python-dateutil>=2"
 ]
 
 [project.optional-dependencies]
@@ -35,7 +37,8 @@ tests = [
 ]
 dev = [
   "memory_foam[tests]",
-  "mypy==1.15.0"
+  "mypy==1.15.0",
+  "types-python-dateutil"
 ]
 examples = [
   "dlt[duckdb]",

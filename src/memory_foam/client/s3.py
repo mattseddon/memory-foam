@@ -5,7 +5,7 @@ from s3fs import S3FileSystem
 
 from ..asyn import queue_task_result, get_loop
 from ..file import File, FilePointer
-from .fsspec import DELIMITER, Client, ResultQueue
+from .fsspec import DELIMITER, Client, PageQueue, ResultQueue
 
 from botocore.exceptions import NoCredentialsError
 
@@ -52,14 +52,14 @@ class ClientS3(Client):
     async def _fetch(self, start_prefix: str, result_queue: ResultQueue) -> None:
         loop = get_loop()
 
-        async def get_pages(it, page_queue):
+        async def get_pages(it, page_queue: PageQueue):
             try:
                 async for page in it:
                     await page_queue.put(page.get(contents_key, []))
             finally:
                 await page_queue.put(None)
 
-        async def process_pages(page_queue, result_queue):
+        async def process_pages(page_queue: PageQueue, result_queue: ResultQueue):
             max_concurrent_reads = asyncio.Semaphore(32)
 
             async def _read_file(pointer: FilePointer) -> File:
@@ -70,12 +70,12 @@ class ClientS3(Client):
             try:
                 found = False
 
-                while (res := await page_queue.get()) is not None:
-                    if res:
+                while (page := await page_queue.get()) is not None:
+                    if page:
                         found = True
 
                     tasks = []
-                    for d in res:
+                    for d in page:
                         if not self._is_valid_key(d["Key"]):
                             continue
                         pointer = self._info_to_file_pointer(d)
@@ -110,13 +110,12 @@ class ClientS3(Client):
                 Prefix=prefix,
                 Delimiter="",
             )
-            page_queue: ResultQueue = asyncio.Queue(2)
+            page_queue: PageQueue = asyncio.Queue(2)
             page_consumer = loop.create_task(process_pages(page_queue, result_queue))
             try:
-                await get_pages(it, page_queue)
-                await page_consumer
+                await asyncio.gather(get_pages(it, page_queue), page_consumer)
             finally:
-                page_consumer.cancel()  # In case get_pages() raised
+                page_consumer.cancel()
         finally:
             result_queue.put_nowait(None)
 

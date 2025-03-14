@@ -102,7 +102,7 @@ def match_entries(result, expected):
     assert normalize_entries(result) == normalize_entries(expected)
 
 
-def test_iter_files_success(client, mocker):
+def test_iter_files_success(client, mocker, cloud_type):
     mocker.patch("memory_foam.client.Client.get_client", return_value=client)
-    results = [file for file in iter_files("s3://fake-client/")]
+    results = [file for file in iter_files(f"{cloud_type}://fake-client/")]
     match_entries(results, ENTRIES)
