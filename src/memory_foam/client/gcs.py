@@ -17,42 +17,19 @@ from .fsspec import DELIMITER, Client, PageQueue, ResultQueue
 GCSFileSystem.set_session = GCSFileSystem._set_session
 
 
-class GCSFileSystem_(GCSFileSystem):
-    @retry_request(retries=6)
-    async def read(self, path):
-        await self._set_session()
-        async with self.session.get(
-            url=self.url(path),
-            params=self._get_params({}),
-            headers=self._get_headers(None),
-            timeout=self.requests_timeout,
-        ) as r:
-            r.raise_for_status()
-
-            byts = b""
-
-            while True:
-                data = await r.content.read(4096 * 32)
-                if not data:
-                    break
-                byts = byts + data
-
-            return byts
-
-
 class GCSClient(Client):
-    FS_CLASS = GCSFileSystem_
+    FS_CLASS = GCSFileSystem
     PREFIX = "gs://"
     protocol = "gs"
 
     @classmethod
-    def create_fs(cls, **kwargs) -> GCSFileSystem_:
+    def create_fs(cls, **kwargs) -> GCSFileSystem:
         if os.environ.get("MF_GCP_CREDENTIALS"):
             kwargs["token"] = json.loads(os.environ["MF_GCP_CREDENTIALS"])
         if kwargs.pop("anon", False):
             kwargs["token"] = "anon"  # noqa: S105
 
-        return cast(GCSFileSystem_, super().create_fs(**kwargs))
+        return cast(GCSFileSystem, super().create_fs(**kwargs))
 
     @staticmethod
     def parse_timestamp(timestamp: str) -> datetime:
@@ -151,8 +128,27 @@ class GCSClient(Client):
             last_modified=self.parse_timestamp(info["updated"]),
         )
 
-    async def _read(self, path, version) -> bytes:
-        return await self.fs.read(self.get_full_path(path, version))
+    @retry_request(retries=6)
+    async def _read(self, path: str, version: str):
+        url = self.fs.url(self.get_full_path(path, version))
+        await self.fs._set_session()
+        async with self.fs.session.get(
+            url=url,
+            params=self.fs._get_params({}),
+            headers=self.fs._get_headers(None),
+            timeout=self.fs.requests_timeout,
+        ) as r:
+            r.raise_for_status()
+
+            byts = b""
+
+            while True:
+                data = await r.content.read(4096 * 32)
+                if not data:
+                    break
+                byts = byts + data
+
+            return byts
 
     @classmethod
     def version_path(cls, path: str, version_id: Optional[str]) -> str:
