@@ -1,9 +1,41 @@
+from argparse import _AppendAction
 from typing import Any
 import pytest
 import attrs
 from upath.implementations.cloud import CloudPath
 
 from memory_foam.client import Client
+
+
+class CommaSeparatedArgs(_AppendAction):
+    def __call__(self, parser, namespace, values, option_string=None):
+        items = getattr(namespace, self.dest) or []
+        items.extend(v for value in values.split(",") if (v := value.strip()))
+        setattr(namespace, self.dest, list(dict.fromkeys(items)))
+
+
+def pytest_addoption(parser):
+    parser.addoption(
+        "--disable-remotes",
+        action=CommaSeparatedArgs,
+        default=[],
+        help="Comma separated list of remotes to disable",
+    )
+
+
+def pytest_collection_modifyitems(config, items):
+    disabled_remotes = config.getoption("--disable-remotes")
+    if not disabled_remotes:
+        return
+
+    for item in items:
+        if "cloud_server" in item.fixturenames:
+            cloud_type = item.callspec.params.get("cloud_type")
+            if cloud_type not in cloud_types:
+                continue
+            if cloud_type in disabled_remotes:
+                reason = f"Skipping all tests for {cloud_type=}"
+                item.add_marker(pytest.mark.skip(reason=reason))
 
 
 DEFAULT_TREE: dict[str, Any] = {
