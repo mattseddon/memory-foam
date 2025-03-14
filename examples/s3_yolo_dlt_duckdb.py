@@ -12,9 +12,10 @@ import dlt
 
 
 def transform_yolo_results(pointer: FilePointer, results):
+    box = []
     for r in results:
         for s in r.summary():
-            yield pointer.to_dict_with(
+            box.append(
                 {
                     "confidence": s["confidence"],
                     "class": s["class"],
@@ -22,6 +23,7 @@ def transform_yolo_results(pointer: FilePointer, results):
                     "box": s.get("box"),
                 }
             )
+    yield pointer.to_dict_with({"box": box})
 
 
 @dlt.resource(table_name="yolo_data")
@@ -43,4 +45,6 @@ pipeline = dlt.pipeline(
 
 load_info = pipeline.run(yolo_data())
 print(load_info)
-print(pipeline.dataset().yolo_data.df())
+dataset = pipeline.dataset()
+print(dataset.yolo_data.df())
+print(dataset.yolo_data__box.df())
