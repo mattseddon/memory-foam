@@ -23,7 +23,7 @@ def transform_yolo_results(pointer: FilePointer, results):
                     "box": s.get("box"),
                 }
             )
-    yield pointer.to_dict_with({"box": box})
+    return pointer.to_dict_with({"box": box})
 
 
 @dlt.resource(table_name="yolo_data")
@@ -31,12 +31,12 @@ def yolo_data():
     with tqdm(desc=f"Processing {uri}", unit=" files") as pbar:
         for pointer, contents in iter_files(uri, {"anon": True}):
             results = yolo(Image.open(BytesIO(contents)))
-            yield from transform_yolo_results(pointer, results)
+            yield transform_yolo_results(pointer, results)
             pbar.update(1)
 
 
 yolo = YOLO("yolo11n.pt", verbose=False)
-uri = "s3://ldb-public/remote/data-lakes/ISIA_500/Croissant"
+uri = "s3://argoverse/datasets/av2/sensor/test/fee0f78c-cf00-35c5-975b-72724f53fd64/sensors/cameras/ring_front_center/"
 
 pipeline = dlt.pipeline(
     pipeline_name="yolo_data",
