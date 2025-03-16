@@ -5,13 +5,12 @@
 [![tests](https://github.com/mattseddon/memory-foam/actions/workflows/tests.yml/badge.svg)](https://github.com/mattseddon/memory-foam/actions/workflows/tests.yml)
 [![codecov](https://codecov.io/gh/mattseddon/memory-foam/graph/badge.svg?token=7TT8YRWTV9)](https://codecov.io/gh/mattseddon/memory-foam)
 
-`memory-foam` is a Python package that provides performant iterators for loading files from S3 and GCS cloud storage into memory for easy processing.
+`memory-foam` is a Python package that provides performant iterators for loading files from S3 and GCS into memory for easy processing.
 
 ## Features
 
 - **Unified Interface**: Seamlessly interact with files stored in S3 and GCS.
 - **Asynchronous Support**: Efficiently load files using asynchronous iterators.
-- **Version Awareness**: Handle different versions of files with ease.
 
 ## Installation
 
@@ -24,7 +23,6 @@ pip install memory-foam
 ## Example usage
 
 ```python
-from io import BytesIO
 from memory_foam import iter_files
 
 ...
