@@ -117,7 +117,7 @@ class ClientS3(Client):
             finally:
                 page_consumer.cancel()
         finally:
-            result_queue.put_nowait(None)
+            await result_queue.put(None)
 
     async def _read(self, path, version) -> bytes:
         stream = await self.fs.open_async(self.get_full_path(path, version))

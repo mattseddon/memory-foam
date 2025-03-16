@@ -64,7 +64,7 @@ class GCSClient(Client):
             finally:
                 page_consumer.cancel()  # In case _get_pages() raised
         finally:
-            result_queue.put_nowait(None)
+            await result_queue.put(None)
 
     async def _process_pages(
         self, page_queue: PageQueue, result_queue: ResultQueue
