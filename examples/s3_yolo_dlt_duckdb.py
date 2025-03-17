@@ -29,7 +29,7 @@ def transform_yolo_results(pointer: FilePointer, results):
 @dlt.resource(table_name="yolo_data")
 def yolo_data():
     with tqdm(desc=f"Processing {uri}", unit=" files") as pbar:
-        for pointer, contents in iter_files(uri, {"anon": True}):
+        for pointer, contents in iter_files(uri, client_config={"anon": True}):
             results = yolo(Image.open(BytesIO(contents)))
             yield transform_yolo_results(pointer, results)
             pbar.update(1)
