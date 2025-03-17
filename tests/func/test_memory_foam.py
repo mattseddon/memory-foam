@@ -85,8 +85,12 @@ ENTRIES = [
 
 
 @pytest.fixture
-def client(cloud_server, cloud_server_credentials):
-    return Client.get_client(cloud_server.src_uri, **cloud_server.client_config)
+def client(cloud_server, cloud_server_credentials, mocker):
+    with Client.get_client(
+        cloud_server.src_uri, **cloud_server.client_config
+    ) as client:
+        mocker.patch("memory_foam.client.Client.get_client", return_value=client)
+        yield client
 
 
 _non_null_text = st.text(
@@ -103,15 +107,12 @@ def match_entries(result, expected):
     assert normalize_entries(result) == normalize_entries(expected)
 
 
-def test_iter_files_success(client, mocker, cloud_type):
-    mocker.patch("memory_foam.client.Client.get_client", return_value=client)
+def test_iter_files_success(client, cloud_type):
     results = [file for file in iter_files(f"{cloud_type}://fake-client/")]
     match_entries(results, ENTRIES)
 
 
-def test_iter_files_async(client, mocker, cloud_type):
-    mocker.patch("memory_foam.client.Client.get_client", return_value=client)
-
+def test_iter_files_async(client, cloud_type):
     results = [
         file
         for file in iter_over_async(iter_files_async(f"{cloud_type}://fake-client/"))
@@ -120,8 +121,7 @@ def test_iter_files_async(client, mocker, cloud_type):
     match_entries(results, ENTRIES)
 
 
-def test_iter_files_glob(client, mocker, cloud_type):
-    mocker.patch("memory_foam.client.Client.get_client", return_value=client)
+def test_iter_files_glob(client, cloud_type):
     results = [
         file for file in iter_files(f"{cloud_type}://fake-client/", glob="**/*.jpeg")
     ]
