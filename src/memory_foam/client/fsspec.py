@@ -36,6 +36,12 @@ class Client(ABC):
         self._fs: Optional[AbstractFileSystem] = None
         self.uri = self.get_uri(self.name)
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, type, value, traceback):
+        self.close()
+
     @classmethod
     def create_fs(cls, **kwargs) -> "AbstractFileSystem":
         kwargs.setdefault("version_aware", True)

@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 import pytest
-from memory_foam import iter_files
+from memory_foam import iter_files, iter_files_async
+from memory_foam.asyn import iter_over_async
 from memory_foam.client import Client
 from memory_foam.file import FilePointer
 from hypothesis import strategies as st
@@ -105,6 +106,17 @@ def match_entries(result, expected):
 def test_iter_files_success(client, mocker, cloud_type):
     mocker.patch("memory_foam.client.Client.get_client", return_value=client)
     results = [file for file in iter_files(f"{cloud_type}://fake-client/")]
+    match_entries(results, ENTRIES)
+
+
+def test_iter_files_async(client, mocker, cloud_type):
+    mocker.patch("memory_foam.client.Client.get_client", return_value=client)
+
+    results = [
+        file
+        for file in iter_over_async(iter_files_async(f"{cloud_type}://fake-client/"))
+    ]
+
     match_entries(results, ENTRIES)
 
 
