@@ -13,7 +13,7 @@ async def queue_task_result(coro: Awaitable[T], queue: asyncio.Queue, loop=get_l
     return task
 
 
-def iter_over_async(
+def sync_iter_async(
     ait: AsyncIterable[T], loop: asyncio.AbstractEventLoop = get_loop()
 ) -> Iterator[T]:
     """Wrap an asynchronous iterator into a synchronous one"""
