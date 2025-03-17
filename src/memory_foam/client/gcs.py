@@ -8,8 +8,10 @@ from dateutil.parser import isoparse
 from gcsfs import GCSFileSystem
 from gcsfs.retry import retry_request
 
+
 from ..asyn import queue_task_result, get_loop
 from ..file import File, FilePointer
+from ..glob import get_glob_match, is_match
 
 from .fsspec import DELIMITER, Client, PageQueue, ResultQueue
 
@@ -45,7 +47,9 @@ class GCSClient(Client):
     def close(self):
         pass
 
-    async def _fetch(self, start_prefix: str, result_queue: ResultQueue) -> None:
+    async def _fetch(
+        self, start_prefix: str, glob: Optional[str], result_queue: ResultQueue
+    ) -> None:
         loop = get_loop()
         prefix = start_prefix
         if prefix:
@@ -54,7 +58,7 @@ class GCSClient(Client):
         try:
             page_queue: PageQueue = asyncio.Queue(2)
             page_consumer = loop.create_task(
-                self._process_pages(page_queue, result_queue)
+                self._process_pages(page_queue, glob, result_queue)
             )
             try:
                 await self._get_pages(prefix, page_queue)
@@ -67,8 +71,9 @@ class GCSClient(Client):
             await result_queue.put(None)
 
     async def _process_pages(
-        self, page_queue: PageQueue, result_queue: ResultQueue
+        self, page_queue: PageQueue, glob: Optional[str], result_queue: ResultQueue
     ) -> bool:
+        glob_match = get_glob_match(glob)
         max_concurrent_reads = asyncio.Semaphore(32)
 
         async def _read_file(pointer: FilePointer) -> File:
@@ -83,7 +88,10 @@ class GCSClient(Client):
 
                 tasks = []
                 for d in page:
-                    if not self._is_valid_key(d["name"]):
+                    if not (
+                        self._is_valid_key(d["name"])
+                        and is_match(d["name"], glob_match)
+                    ):
                         continue
                     pointer = self._info_to_file_pointer(d)
                     task = queue_task_result(

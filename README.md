@@ -27,7 +27,7 @@ from memory_foam import iter_files
 
 ...
 
-for pointer, contents in iter_files(uri, client_config):
+for pointer, contents in iter_files(uri, glob, client_config):
     results = process(contents)
     data = pointer.to_dict_with(results)
     save(data)

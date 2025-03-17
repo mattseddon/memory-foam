@@ -5,6 +5,7 @@ from s3fs import S3FileSystem
 
 from ..asyn import queue_task_result, get_loop
 from ..file import File, FilePointer
+from ..glob import get_glob_match, is_match
 from .fsspec import DELIMITER, Client, PageQueue, ResultQueue
 
 from botocore.exceptions import NoCredentialsError
@@ -49,7 +50,9 @@ class ClientS3(Client):
     def close(self):
         self.fs.close_session(get_loop(), self.s3)
 
-    async def _fetch(self, start_prefix: str, result_queue: ResultQueue) -> None:
+    async def _fetch(
+        self, start_prefix: str, glob: Optional[str], result_queue: ResultQueue
+    ) -> None:
         loop = get_loop()
 
         async def get_pages(it, page_queue: PageQueue):
@@ -59,7 +62,10 @@ class ClientS3(Client):
             finally:
                 await page_queue.put(None)
 
-        async def process_pages(page_queue: PageQueue, result_queue: ResultQueue):
+        async def process_pages(
+            page_queue: PageQueue, glob: Optional[str], result_queue: ResultQueue
+        ):
+            glob_match = get_glob_match(glob)
             max_concurrent_reads = asyncio.Semaphore(32)
 
             async def _read_file(pointer: FilePointer) -> File:
@@ -76,7 +82,10 @@ class ClientS3(Client):
 
                     tasks = []
                     for d in page:
-                        if not self._is_valid_key(d["Key"]):
+                        if not (
+                            self._is_valid_key(d["Key"])
+                            and is_match(d["Key"], glob_match)
+                        ):
                             continue
                         pointer = self._info_to_file_pointer(d)
                         task = queue_task_result(
@@ -111,7 +120,9 @@ class ClientS3(Client):
                 Delimiter="",
             )
             page_queue: PageQueue = asyncio.Queue(2)
-            page_consumer = loop.create_task(process_pages(page_queue, result_queue))
+            page_consumer = loop.create_task(
+                process_pages(page_queue, glob, result_queue)
+            )
             try:
                 await asyncio.gather(get_pages(it, page_queue), page_consumer)
             finally:

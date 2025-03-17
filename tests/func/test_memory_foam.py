@@ -106,3 +106,12 @@ def test_iter_files_success(client, mocker, cloud_type):
     mocker.patch("memory_foam.client.Client.get_client", return_value=client)
     results = [file for file in iter_files(f"{cloud_type}://fake-client/")]
     match_entries(results, ENTRIES)
+
+
+def test_iter_files_glob(client, mocker, cloud_type):
+    mocker.patch("memory_foam.client.Client.get_client", return_value=client)
+    results = [
+        file for file in iter_files(f"{cloud_type}://fake-client/", glob="**/*.jpeg")
+    ]
+    assert len(results) == 2
+    assert {res[0].path for res in results} == {"trees/oak.jpeg", "trees/pine.jpeg"}

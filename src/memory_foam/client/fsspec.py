@@ -117,10 +117,12 @@ class Client(ABC):
     def version_path(cls, path: str, version_id: Optional[str]) -> str:
         return path
 
-    async def iter_files(self, start_prefix: str) -> AsyncIterator[File]:
+    async def iter_files(
+        self, start_prefix: str, glob: Optional[str] = None
+    ) -> AsyncIterator[File]:
         result_queue: ResultQueue = asyncio.Queue(200)
         loop = get_loop()
-        main_task = loop.create_task(self._fetch(start_prefix, result_queue))
+        main_task = loop.create_task(self._fetch(start_prefix, glob, result_queue))
 
         while (file := await result_queue.get()) is not None:
             yield file
@@ -128,7 +130,9 @@ class Client(ABC):
         await main_task
 
     @abstractmethod
-    async def _fetch(self, start_prefix: str, result_queue: ResultQueue) -> None: ...
+    async def _fetch(
+        self, start_prefix: str, glob: Optional[str], result_queue: ResultQueue
+    ) -> None: ...
 
     @staticmethod
     def _is_valid_key(key: str) -> bool:
