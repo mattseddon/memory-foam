@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "memory-foam"
-description = "Performant iterators for loading files from S3 and GCS into memory for easy processing."
+description = "Performant iterators for loading files from S3, GCS and Azure into memory for easy processing."
 readme = "README.md"
 license = {text = "Apache-2.0"}
 authors = [{name = "Matt Seddon", email = "mattseddon@hotmail.com"}]
