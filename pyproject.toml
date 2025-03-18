@@ -42,9 +42,11 @@ dev = [
 ]
 examples = [
   "dlt[duckdb]",
+  "huggingface_hub[hf_transfer]",
+  "open_clip_torch",
   "pillow",
-  "ultralytics",
-  "tqdm"
+  "tqdm",
+  "ultralytics"
 ]
 
 [project.urls]
