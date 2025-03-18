@@ -43,7 +43,7 @@ def setup_embeddings_model():
     return model, preprocess
 
 
-def _write_buffer(buffer: list):
+def _write_buffer(buffer: list[str]):
     if buffer:
         with duckdb.connect(db_path) as conn:
             conn.sql(
@@ -51,7 +51,7 @@ def _write_buffer(buffer: list):
             )
 
 
-def _update_buffer(buffer: list, pointer: FilePointer, emb: list) -> list:
+def _process_buffer(buffer: list[str], pointer: FilePointer, emb: list) -> list[str]:
     buffer.append(
         f"('{pointer.source}', '{pointer.path}', {pointer.size}, '{pointer.version}', '{pointer.last_modified.isoformat()}', {emb}::FLOAT[512])"
     )
@@ -61,18 +61,6 @@ def _update_buffer(buffer: list, pointer: FilePointer, emb: list) -> list:
         return []
 
     return buffer
-
-
-def load_img_embeddings(uri, glob, model, preprocess):
-    buffer = []
-    with tqdm(desc=f"Processing {uri}", unit=" files") as pbar:
-        for pointer, contents in iter_files(uri, glob, client_config={"anon": True}):
-            img = preprocess(Image.open(BytesIO(contents))).unsqueeze(0)
-            emb = model.encode_image(img).tolist()[0]
-            buffer = _update_buffer(buffer, pointer, emb)
-            pbar.update(1)
-
-        _write_buffer(buffer)
 
 
 def show_example_similarity_search():
@@ -99,5 +87,16 @@ def show_example_similarity_search():
 
 setup_db()
 model, preprocess = setup_embeddings_model()
-load_img_embeddings("gs://datachain-demo/dogs-and-cats/", "*.jpg", model, preprocess)
+
+buffer: list[str] = []
+uri = "gs://datachain-demo/dogs-and-cats/"
+with tqdm(desc=f"Processing {uri}", unit=" files") as pbar:
+    for pointer, contents in iter_files(uri, "*.jpg", client_config={"anon": True}):
+        img = preprocess(Image.open(BytesIO(contents))).unsqueeze(0)
+        emb = model.encode_image(img).tolist()[0]
+        buffer = _process_buffer(buffer, pointer, emb)
+        pbar.update(1)
+
+    _write_buffer(buffer)
+
 show_example_similarity_search()
