@@ -44,6 +44,7 @@ dev = [
 examples = [
   "dlt[duckdb]",
   "huggingface_hub[hf_transfer]",
+  "matplotlib",
   "open_clip_torch",
   "pillow",
   "tqdm",

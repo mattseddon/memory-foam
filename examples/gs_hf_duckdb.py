@@ -1,5 +1,7 @@
 import os
 
+from matplotlib import pyplot as plt
+
 
 os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
 
@@ -63,7 +65,8 @@ def _process_buffer(buffer: list[str], pointer: FilePointer, emb: list) -> list[
     return buffer
 
 
-def show_example_similarity_search():
+def show_example_similarity_search(images: dict):
+    print("*** Demonstrate vector search against first loaded image ***")
     conn = duckdb.connect(db_path)
     conn.load_extension("vss")
     conn.execute("SET hnsw_enable_experimental_persistence = true;")
@@ -73,7 +76,6 @@ def show_example_similarity_search():
     conn.sql(
         """
         SELECT
-            source,
             path,
             version,
             array_distance(embeddings, (select embeddings from img_embeddings limit 1)) as distance
@@ -82,6 +84,30 @@ def show_example_similarity_search():
         LIMIT 3;
         """
     ).show()
+
+    f, axarr = plt.subplots(1, 3)
+    f.suptitle("DuckDB Vector Search")
+
+    titles = ["Original", "Nearest", "Next Nearest"]
+
+    for i, path in enumerate(
+        conn.execute(
+            """
+        SELECT path
+        FROM img_embeddings
+        ORDER BY array_distance(embeddings, (select embeddings from img_embeddings limit 1))
+        LIMIT 3;
+        """
+        )
+        .fetch_df()["path"]
+        .to_list()
+    ):
+        axarr[i].imshow(images[path])
+        axarr[i].set_title(titles[i])
+        axarr[i].axis("off")
+
+    plt.show()
+
     conn.close()
 
 
@@ -90,13 +116,16 @@ model, preprocess = setup_embeddings_model()
 
 buffer: list[str] = []
 uri = "gs://datachain-demo/dogs-and-cats/"
-with tqdm(desc=f"Processing {uri}", unit=" files") as pbar:
+images = {}  # for demo purposes only - do not do this, you'll run out of memory!
+with tqdm(desc="Processing embeddings", unit=" files") as pbar:
     for pointer, contents in iter_files(uri, "*.jpg", client_config={"anon": True}):
-        img = preprocess(Image.open(BytesIO(contents))).unsqueeze(0)
-        emb = model.encode_image(img).tolist()[0]
+        image = Image.open(BytesIO(contents))
+        images[pointer.path] = image
+        preprocessed_img = preprocess(image).unsqueeze(0)
+        emb = model.encode_image(preprocessed_img).tolist()[0]
         buffer = _process_buffer(buffer, pointer, emb)
         pbar.update(1)
 
     _write_buffer(buffer)
 
-show_example_similarity_search()
+show_example_similarity_search(images)
