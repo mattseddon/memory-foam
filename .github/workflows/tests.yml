@@ -95,7 +95,7 @@ jobs:
 
       - name: Skip missing remotes
         if: runner.os == 'macOS' || runner.os == 'Windows'
-        run: echo 'DISABLE_REMOTES_ARG=--disable-remotes=gs' >> "$GITHUB_ENV"
+        run: echo 'DISABLE_REMOTES_ARG=--disable-remotes=azure,gs' >> "$GITHUB_ENV"
 
       - name: Run tests
         run: nox -s tests-${{ matrix.pyv }} -- $DISABLE_REMOTES_ARG

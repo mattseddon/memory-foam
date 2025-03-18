@@ -4,8 +4,6 @@ import pytest
 import attrs
 from upath.implementations.cloud import CloudPath
 
-from memory_foam.client import Client
-
 
 class CommaSeparatedArgs(_AppendAction):
     def __call__(self, parser, namespace, values, option_string=None):
@@ -89,7 +87,11 @@ class CloudServer:
         return str(self.src).rstrip("/")
 
 
-cloud_types = ["s3", "gs"]
+cloud_types = [
+    "azure",
+    # "gs",
+    "s3",
+]
 
 
 @pytest.fixture(scope="session", params=cloud_types)
@@ -105,6 +107,8 @@ def make_cloud_server(src_path, cloud_type, tree):
     elif cloud_type in ("gs", "gcs"):
         endpoint_url = fs._endpoint
         client_config = {"endpoint_url": endpoint_url}
+    elif cloud_type == "azure":
+        client_config = fs.storage_options.copy()
     else:
         raise ValueError(f"invalid cloud_type: {cloud_type}")
 
@@ -133,10 +137,8 @@ def cloud_server_credentials(cloud_server, monkeypatch):
 
 @pytest.fixture(scope="session")
 def cloud_server(request, tmp_upath_factory, cloud_type, version_aware, tree):
-    src_path = tmp_upath_factory.mktemp(cloud_type, version_aware=version_aware)
+    if cloud_type == "azure" and version_aware:
+        pytest.skip("Can't test versioning with Azure")
+    else:
+        src_path = tmp_upath_factory.mktemp(cloud_type, version_aware=version_aware)
     return make_cloud_server(src_path, cloud_type, tree)
-
-
-@pytest.fixture
-def client(cloud_server, cloud_server_credentials):
-    return Client.get_client(cloud_server.src_uri, **cloud_server.client_config)

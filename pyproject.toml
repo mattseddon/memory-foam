@@ -21,8 +21,9 @@ requires-python = ">=3.9"
 dynamic = ["version"]
 dependencies = [
   "fsspec>=2024.2.0",
-  "s3fs>=2024.2.0",
+  "adlfs>=2024.2.0",
   "gcsfs>=2024.2.0",
+  "s3fs>=2024.2.0",
   "python-dateutil>=2"
 ]
 
@@ -32,7 +33,7 @@ tests = [
   "pytest-sugar>=0.9.6",
   "pytest-cov>=4.1.0",
   "pytest-mock>=3.12.0",
-  "pytest-servers[s3]>=0.5.9",
+  "pytest-servers[all]>=0.5.9",
   "hypothesis"
 ]
 dev = [
@@ -57,6 +58,10 @@ Source = "https://github.com/mattseddon/memory-foam"
 [tool.setuptools_scm]
 
 [tool.pytest.ini_options]
+addopts = "-rfEs"
+filterwarnings = [
+  "ignore::DeprecationWarning:botocore.auth"
+]
 
 [tool.coverage.run]
 branch = true

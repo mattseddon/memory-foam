@@ -6,9 +6,9 @@ from .asyn import sync_iter_async, get_loop
 
 
 async def iter_files_async(
-    uri: str, glob: Optional[str] = None, client_config: dict = {}
+    uri: str, glob: Optional[str] = None, client_config: dict = {}, loop=get_loop()
 ) -> AsyncIterator[File]:
-    with Client.get_client(uri, **client_config) as client:
+    with Client.get_client(uri, loop, **client_config) as client:
         _, path = client.parse_url(uri)
         async for file in client.iter_files(path.rstrip("/"), glob):
             yield file
@@ -17,8 +17,9 @@ async def iter_files_async(
 def iter_files(
     uri: str, glob: Optional[str] = None, client_config: dict = {}
 ) -> Iterator[File]:
-    async_iter = iter_files_async(uri, glob, client_config)
-    for file in sync_iter_async(async_iter, get_loop()):
+    loop = get_loop()
+    async_iter = iter_files_async(uri, glob, client_config, loop)
+    for file in sync_iter_async(async_iter, loop):
         yield file
 
 

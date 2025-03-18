@@ -9,7 +9,7 @@ from gcsfs import GCSFileSystem
 from gcsfs.retry import retry_request
 
 
-from ..asyn import queue_task_result, get_loop
+from ..asyn import queue_task_result
 from ..file import File, FilePointer
 from ..glob import get_glob_match, is_match
 
@@ -50,14 +50,13 @@ class GCSClient(Client):
     async def _fetch(
         self, start_prefix: str, glob: Optional[str], result_queue: ResultQueue
     ) -> None:
-        loop = get_loop()
         prefix = start_prefix
         if prefix:
             prefix = prefix.lstrip(DELIMITER) + DELIMITER
         found = False
         try:
             page_queue: PageQueue = asyncio.Queue(2)
-            page_consumer = loop.create_task(
+            page_consumer = self.loop.create_task(
                 self._process_pages(page_queue, glob, result_queue)
             )
             try:
@@ -95,7 +94,7 @@ class GCSClient(Client):
                         continue
                     pointer = self._info_to_file_pointer(d)
                     task = queue_task_result(
-                        _read_file(pointer), result_queue, get_loop()
+                        _read_file(pointer), result_queue, self.loop
                     )
                     tasks.append(task)
                 await asyncio.gather(*tasks)

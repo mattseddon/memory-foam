@@ -1,9 +1,9 @@
 from datetime import datetime, timezone
 import pytest
 from memory_foam import iter_files
+from memory_foam.asyn import get_loop
 from memory_foam.client import Client
 from memory_foam.file import FilePointer
-from hypothesis import strategies as st
 
 from tests.conftest import DEFAULT_TREE
 
@@ -84,17 +84,18 @@ ENTRIES = [
 
 
 @pytest.fixture
-def client(cloud_server, cloud_server_credentials, mocker):
+def suppress_client_gc_errors(mocker):
+    mocker.patch("weakref.finalize", return_value=None)
+
+
+@pytest.fixture
+def client(cloud_server, cloud_server_credentials, mocker, suppress_client_gc_errors):
+    loop = get_loop()
     with Client.get_client(
-        cloud_server.src_uri, **cloud_server.client_config
+        cloud_server.src_uri, loop, **cloud_server.client_config
     ) as client:
         mocker.patch("memory_foam.client.Client.get_client", return_value=client)
         yield client
-
-
-_non_null_text = st.text(
-    alphabet=st.characters(blacklist_categories=["Cc", "Cs"]), min_size=1
-)
 
 
 def normalize_entries(entries):
@@ -107,13 +108,13 @@ def match_entries(result, expected):
 
 
 def test_iter_files(client, cloud_type):
-    results = [file for file in iter_files(f"{cloud_type}://fake-client/")]
+    results = [file for file in iter_files(f"{client.PREFIX}{client.name}")]
     match_entries(results, ENTRIES)
 
 
 def test_iter_files_glob(client, cloud_type):
     results = [
-        file for file in iter_files(f"{cloud_type}://fake-client/", glob="**/*.jpeg")
+        file for file in iter_files(f"{client.PREFIX}{client.name}", glob="**/*.jpeg")
     ]
     assert len(results) == 2
     assert {res[0].path for res in results} == {"trees/oak.jpeg", "trees/pine.jpeg"}

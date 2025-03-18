@@ -7,7 +7,6 @@ from fsspec.spec import AbstractFileSystem
 from urllib.parse import urlparse
 
 from ..file import File
-from ..asyn import get_loop
 
 DELIMITER = "/"  # Path delimiter.
 FETCH_WORKERS = 100
@@ -29,12 +28,16 @@ class Client(ABC):
     FS_CLASS: ClassVar[type["AbstractFileSystem"]]
     PREFIX: ClassVar[str]
     protocol: ClassVar[str]
+    loop: asyncio.AbstractEventLoop
 
-    def __init__(self, name: str, fs_kwargs: dict[str, Any]) -> None:
+    def __init__(
+        self, name: str, loop: asyncio.AbstractEventLoop, fs_kwargs: dict[str, Any]
+    ) -> None:
         self.name = name
         self.fs_kwargs = fs_kwargs
         self._fs: Optional[AbstractFileSystem] = None
         self.uri = self.get_uri(self.name)
+        self.loop = loop
 
     def __enter__(self):
         return self
@@ -55,15 +58,16 @@ class Client(ABC):
     @property
     def fs(self) -> AbstractFileSystem:
         if not self._fs:
-            self._fs = self.create_fs(**self.fs_kwargs)
+            self._fs = self.create_fs(
+                **self.fs_kwargs, asynchronous=True, loop=self.loop
+            )
         return self._fs
 
     @staticmethod
     def get_implementation(url: str) -> type["Client"]:
-        # from .azure import AzureClient
-        # from .gcs import GCSClient
-        from .s3 import ClientS3
+        from .azure import AzureClient
         from .gcs import GCSClient
+        from .s3 import ClientS3
 
         protocol = urlparse(url).scheme
 
@@ -77,27 +81,28 @@ class Client(ABC):
             return ClientS3
         if protocol == GCSClient.protocol:
             return GCSClient
-        # if protocol == AzureClient.protocol:
-        #     return AzureClient
+        if protocol == AzureClient.protocol:
+            return AzureClient
 
         raise NotImplementedError(f"Unsupported protocol: {protocol}")
 
     @staticmethod
-    def get_client(source: str, **kwargs) -> "Client":
+    def get_client(source: str, loop: asyncio.AbstractEventLoop, **kwargs) -> "Client":
         cls = Client.get_implementation(source)
         storage_url, _ = cls.split_url(source)
         if os.name == "nt":
             storage_url = storage_url.removeprefix("/")
 
-        return cls.from_name(storage_url, kwargs)
+        return cls.from_name(storage_url, loop, kwargs)
 
     @classmethod
     def from_name(
         cls,
         name: str,
+        loop: asyncio.AbstractEventLoop,
         kwargs: dict[str, Any],
     ) -> "Client":
-        return cls(name, kwargs)
+        return cls(name, loop, kwargs)
 
     def parse_url(self, source: str) -> tuple[str, str]:
         storage_name, rel_path = self.split_url(source)
@@ -127,8 +132,7 @@ class Client(ABC):
         self, start_prefix: str, glob: Optional[str] = None
     ) -> AsyncIterator[File]:
         result_queue: ResultQueue = asyncio.Queue(200)
-        loop = get_loop()
-        main_task = loop.create_task(self._fetch(start_prefix, glob, result_queue))
+        main_task = self.loop.create_task(self._fetch(start_prefix, glob, result_queue))
 
         while (file := await result_queue.get()) is not None:
             yield file

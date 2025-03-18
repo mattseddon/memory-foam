@@ -3,7 +3,7 @@ from typing import Any, Optional, cast
 from s3fs import S3FileSystem
 
 
-from ..asyn import queue_task_result, get_loop
+from ..asyn import queue_task_result
 from ..file import File, FilePointer
 from ..glob import get_glob_match, is_match
 from .fsspec import DELIMITER, Client, PageQueue, ResultQueue
@@ -39,22 +39,23 @@ class ClientS3(Client):
         if not kwargs.get("anon"):
             try:
                 # Run an inexpensive check to see if credentials are available
-                super().create_fs(**kwargs).sign("s3://bucket/object")
+                non_async_kwargs = {
+                    k: v for k, v in kwargs.items() if k not in ["asynchronous", "loop"]
+                }
+                super().create_fs(**non_async_kwargs).sign("s3://bucket/object")
             except NoCredentialsError:
                 kwargs["anon"] = True
             except NotImplementedError:
                 pass
 
-        return cast(S3FileSystem, super().create_fs(**kwargs, asynchronous=True))
+        return cast(S3FileSystem, super().create_fs(**kwargs))
 
     def close(self):
-        self.fs.close_session(get_loop(), self.s3)
+        self.fs.close_session(self.loop, self.s3)
 
     async def _fetch(
         self, start_prefix: str, glob: Optional[str], result_queue: ResultQueue
     ) -> None:
-        loop = get_loop()
-
         async def get_pages(it, page_queue: PageQueue):
             try:
                 async for page in it:
@@ -89,7 +90,7 @@ class ClientS3(Client):
                             continue
                         pointer = self._info_to_file_pointer(d)
                         task = queue_task_result(
-                            _read_file(pointer), result_queue, loop
+                            _read_file(pointer), result_queue, self.loop
                         )
                         tasks.append(task)
                     await asyncio.gather(*tasks)
@@ -120,7 +121,7 @@ class ClientS3(Client):
                 Delimiter="",
             )
             page_queue: PageQueue = asyncio.Queue(2)
-            page_consumer = loop.create_task(
+            page_consumer = self.loop.create_task(
                 process_pages(page_queue, glob, result_queue)
             )
             try:
