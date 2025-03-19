@@ -9,7 +9,7 @@ from huggingface_hub import hf_hub_download
 import open_clip
 
 from io import BytesIO
-from memory_foam import FilePointer, iter_files
+from memory_foam import FilePointer, iter_files, iter_pointers
 from PIL import Image
 from tqdm.auto import tqdm
 import duckdb
@@ -65,7 +65,11 @@ def _process_buffer(buffer: list[str], pointer: FilePointer, emb: list) -> list[
     return buffer
 
 
-def show_example_similarity_search(images: dict):
+def _open_image(contents: bytes):
+    return Image.open(BytesIO(contents))
+
+
+def similarity_search() -> tuple[list[FilePointer], dict[str, str]]:
     print("*** Demonstrate vector search against first loaded image ***")
     conn = duckdb.connect(db_path)
     conn.load_extension("vss")
@@ -85,30 +89,33 @@ def show_example_similarity_search(images: dict):
         """
     ).show()
 
-    f, axarr = plt.subplots(1, 3)
-    f.suptitle("DuckDB Vector Search")
-
+    pointers = []
     titles = ["Original", "Nearest", "Next Nearest"]
-
-    for i, path in enumerate(
+    subplot_titles = {}
+    for i, record in enumerate(
         conn.execute(
             """
-        SELECT path
+        SELECT source, path, size, version, last_modified
         FROM img_embeddings
         ORDER BY array_distance(embeddings, (select embeddings from img_embeddings limit 1))
         LIMIT 3;
         """
         )
-        .fetch_df()["path"]
-        .to_list()
+        .fetch_df()
+        .to_dict(orient="records")
     ):
-        axarr[i].imshow(images[path])
-        axarr[i].set_title(titles[i])
-        axarr[i].axis("off")
-
-    plt.show()
+        pointer = FilePointer.from_dict(record)
+        pointers.append(pointer)
+        subplot_titles[pointer.path] = titles[i]
 
     conn.close()
+    return pointers, subplot_titles
+
+
+def setup_plot():
+    f, axarr = plt.subplots(1, 3)
+    f.suptitle("DuckDB Vector Search")
+    return axarr
 
 
 setup_db()
@@ -116,16 +123,27 @@ model, preprocess = setup_embeddings_model()
 
 buffer: list[str] = []
 uri = "gs://datachain-demo/dogs-and-cats/"
-images = {}  # for demo purposes only - do not do this, you'll run out of memory!
+
 with tqdm(desc="Processing embeddings", unit=" files") as pbar:
     for pointer, contents in iter_files(uri, "*.jpg", client_config={"anon": True}):
-        image = Image.open(BytesIO(contents))
-        images[pointer.path] = image
-        preprocessed_img = preprocess(image).unsqueeze(0)
-        emb = model.encode_image(preprocessed_img).tolist()[0]
+        img = preprocess(_open_image(contents)).unsqueeze(0)
+        emb = model.encode_image(img).tolist()[0]
         buffer = _process_buffer(buffer, pointer, emb)
         pbar.update(1)
 
     _write_buffer(buffer)
 
-show_example_similarity_search(images)
+pointers, subplot_titles = similarity_search()
+source = pointers[0].source
+axarr = setup_plot()
+
+with tqdm(desc="Plotting images", unit=" files", total=3) as pbar:
+    for i, (pointer, contents) in enumerate(
+        iter_pointers(source, pointers, {"anon": True})
+    ):
+        axarr[i].imshow(_open_image(contents))
+        axarr[i].set_title(subplot_titles[pointer.path])
+        axarr[i].axis("off")
+        pbar.update()
+
+plt.show()

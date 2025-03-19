@@ -4,7 +4,7 @@ from s3fs import S3FileSystem
 
 
 from ..asyn import queue_task_result
-from ..file import File, FilePointer
+from ..file import FilePointer
 from ..glob import get_glob_match, is_match
 from .fsspec import DELIMITER, Client, PageQueue, ResultQueue
 
@@ -53,7 +53,7 @@ class ClientS3(Client):
     def close(self):
         self.fs.close_session(self.loop, self.s3)
 
-    async def _fetch(
+    async def _fetch_prefix(
         self, start_prefix: str, glob: Optional[str], result_queue: ResultQueue
     ) -> None:
         async def get_pages(it, page_queue: PageQueue):
@@ -67,12 +67,6 @@ class ClientS3(Client):
             page_queue: PageQueue, glob: Optional[str], result_queue: ResultQueue
         ):
             glob_match = get_glob_match(glob)
-            max_concurrent_reads = asyncio.Semaphore(32)
-
-            async def _read_file(pointer: FilePointer) -> File:
-                async with max_concurrent_reads:
-                    contents = await self._read(pointer.path, pointer.version)
-                    return (pointer, contents)
 
             try:
                 found = False
@@ -90,7 +84,7 @@ class ClientS3(Client):
                             continue
                         pointer = self._info_to_file_pointer(d)
                         task = queue_task_result(
-                            _read_file(pointer), result_queue, self.loop
+                            self._read_file(pointer), result_queue, self.loop
                         )
                         tasks.append(task)
                     await asyncio.gather(*tasks)
@@ -105,9 +99,7 @@ class ClientS3(Client):
             if prefix:
                 prefix = prefix.lstrip(DELIMITER) + DELIMITER
             versions = True
-            fs = self.fs
-            await fs.set_session()
-            self.s3 = await fs.get_s3(self.name)
+            await self._setup_fs()
             if versions:
                 method = "list_object_versions"
                 contents_key = "Versions"
@@ -131,7 +123,16 @@ class ClientS3(Client):
         finally:
             await result_queue.put(None)
 
-    async def _read(self, path, version) -> bytes:
+    async def _setup_fs(self):
+        fs = self.fs
+        await fs.set_session()
+        self.s3 = await fs.get_s3(self.name)
+
+    async def _fetch_list(self, pointers, result_queue):
+        await self._setup_fs()
+        return await super()._fetch_list(pointers, result_queue)
+
+    async def _read(self, path: str, version: Optional[str] = None) -> bytes:
         stream = await self.fs.open_async(self.get_full_path(path, version))
         return await stream.read()
 

@@ -12,7 +12,7 @@ from azure.core.exceptions import (
 
 from ..asyn import queue_task_result
 from ..glob import get_glob_match, is_match
-from ..file import File, FilePointer
+from ..file import FilePointer
 
 from .fsspec import DELIMITER, Client, ResultQueue
 
@@ -24,7 +24,7 @@ class AzureClient(Client):
     PREFIX = "az://"
     protocol = "az"
 
-    async def _fetch(
+    async def _fetch_prefix(
         self, start_prefix: str, glob: Optional[str], result_queue: ResultQueue
     ) -> None:
         try:
@@ -51,13 +51,6 @@ class AzureClient(Client):
                 found = False
 
                 glob_match = get_glob_match(glob)
-                max_concurrent_reads = asyncio.Semaphore(32)
-
-                async def _read_file(pointer: FilePointer) -> File:
-                    async with max_concurrent_reads:
-                        full_path = self.get_full_path(pointer.path, pointer.version)
-                        contents = await self._read(full_path)
-                        return (pointer, contents)
 
                 while (page := await page_queue.get()) is not None:
                     if page:
@@ -73,7 +66,7 @@ class AzureClient(Client):
                         info = (await self.fs._details([b]))[0]
                         pointer = self._info_to_file_pointer(info)
                         task = queue_task_result(
-                            _read_file(pointer), result_queue, self.loop
+                            self._read_file(pointer), result_queue, self.loop
                         )
                         tasks.append(task)
                     await asyncio.gather(*tasks)
@@ -107,7 +100,8 @@ class AzureClient(Client):
     def close(self):
         pass
 
-    async def _read(self, full_path: str):
+    async def _read(self, path: str, version: Optional[str] = None) -> bytes:
+        full_path = self.get_full_path(path, version)
         delimiter = "/"
         source, path, version = self.fs.split_path(full_path, delimiter=delimiter)
 

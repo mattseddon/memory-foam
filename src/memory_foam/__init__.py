@@ -14,6 +14,14 @@ async def iter_files_async(
             yield file
 
 
+async def iter_pointers_async(
+    bucket: str, pointers: list[FilePointer], client_config: dict = {}, loop=get_loop()
+) -> AsyncIterator[File]:
+    with Client.get_client(bucket, loop, **client_config) as client:
+        async for file in client.iter_pointers(pointers):
+            yield file
+
+
 def iter_files(
     uri: str, glob: Optional[str] = None, client_config: dict = {}
 ) -> Iterator[File]:
@@ -23,4 +31,20 @@ def iter_files(
         yield file
 
 
-__all__ = ["iter_files", "iter_files_async", "File", "FilePointer"]
+def iter_pointers(
+    bucket: str, pointers: list[FilePointer], client_config: dict = {}
+) -> Iterator[File]:
+    loop = get_loop()
+    async_iter = iter_pointers_async(bucket, pointers, client_config, loop)
+    for file in sync_iter_async(async_iter, loop):
+        yield file
+
+
+__all__ = [
+    "File",
+    "FilePointer",
+    "iter_files_async",
+    "iter_files",
+    "iter_pointers_async",
+    "iter_pointers",
+]

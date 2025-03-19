@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 import pytest
-from memory_foam import iter_files
+from memory_foam import iter_files, iter_pointers
 from memory_foam.asyn import get_loop
 from memory_foam.client import Client
 from memory_foam.file import FilePointer
@@ -118,3 +118,13 @@ def test_iter_files_glob(client, cloud_type):
     ]
     assert len(results) == 2
     assert {res[0].path for res in results} == {"trees/oak.jpeg", "trees/pine.jpeg"}
+
+
+def test_iter_pointers(client, cloud_type):
+    pointers = []
+    for entry in ENTRIES:
+        pointers.append(FilePointer.from_dict(entry[0].to_dict_with({"version": ""})))
+    results = [
+        file for file in iter_pointers(f"{client.PREFIX}{client.name}", pointers)
+    ]
+    match_entries(results, ENTRIES)

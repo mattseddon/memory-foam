@@ -89,7 +89,7 @@ class CloudServer:
 
 cloud_types = [
     "azure",
-    # "gs",
+    "gs",
     "s3",
 ]
 

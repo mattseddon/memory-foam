@@ -1,4 +1,4 @@
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, fields
 from datetime import datetime
 
 
@@ -23,6 +23,11 @@ class FilePointer:
 
     def to_dict_with(self, d: dict):
         return {**asdict(self), **d}
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "FilePointer":
+        kwargs = {f.name: d[f.name] for f in fields(cls) if f.name in d}
+        return cls(**kwargs)
 
 
 File = tuple[FilePointer, bytes]

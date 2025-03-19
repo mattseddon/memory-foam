@@ -10,7 +10,7 @@ from gcsfs.retry import retry_request
 
 
 from ..asyn import queue_task_result
-from ..file import File, FilePointer
+from ..file import FilePointer
 from ..glob import get_glob_match, is_match
 
 from .fsspec import DELIMITER, Client, PageQueue, ResultQueue
@@ -47,7 +47,7 @@ class GCSClient(Client):
     def close(self):
         pass
 
-    async def _fetch(
+    async def _fetch_prefix(
         self, start_prefix: str, glob: Optional[str], result_queue: ResultQueue
     ) -> None:
         prefix = start_prefix
@@ -73,12 +73,6 @@ class GCSClient(Client):
         self, page_queue: PageQueue, glob: Optional[str], result_queue: ResultQueue
     ) -> bool:
         glob_match = get_glob_match(glob)
-        max_concurrent_reads = asyncio.Semaphore(32)
-
-        async def _read_file(pointer: FilePointer) -> File:
-            async with max_concurrent_reads:
-                contents = await self._read(pointer.path, pointer.version)
-                return (pointer, contents)
 
         found = False
         while (page := await page_queue.get()) is not None:
@@ -94,7 +88,7 @@ class GCSClient(Client):
                         continue
                     pointer = self._info_to_file_pointer(d)
                     task = queue_task_result(
-                        _read_file(pointer), result_queue, self.loop
+                        self._read_file(pointer), result_queue, self.loop
                     )
                     tasks.append(task)
                 await asyncio.gather(*tasks)
@@ -136,7 +130,7 @@ class GCSClient(Client):
         )
 
     @retry_request(retries=6)
-    async def _read(self, path: str, version: str):
+    async def _read(self, path: str, version: Optional[str] = None) -> bytes:
         url = self.fs.url(self.get_full_path(path, version))
         await self.fs._set_session()
         async with self.fs.session.get(
@@ -159,5 +153,5 @@ class GCSClient(Client):
 
     @classmethod
     def version_path(cls, path: str, version_id: Optional[str]) -> str:
-        # return f"{path}#{version_id}" if version_id else path
-        return path
+        # return path
+        return f"{path}#{version_id}" if version_id else path

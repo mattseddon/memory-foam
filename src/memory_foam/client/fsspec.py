@@ -6,7 +6,9 @@ from typing import Any, AsyncIterator, ClassVar, Iterable, Optional
 from fsspec.spec import AbstractFileSystem
 from urllib.parse import urlparse
 
-from ..file import File
+from memory_foam.asyn import queue_task_result
+
+from ..file import File, FilePointer
 
 DELIMITER = "/"  # Path delimiter.
 FETCH_WORKERS = 100
@@ -29,6 +31,7 @@ class Client(ABC):
     PREFIX: ClassVar[str]
     protocol: ClassVar[str]
     loop: asyncio.AbstractEventLoop
+    max_concurrent_reads = asyncio.Semaphore(32)
 
     def __init__(
         self, name: str, loop: asyncio.AbstractEventLoop, fs_kwargs: dict[str, Any]
@@ -44,6 +47,14 @@ class Client(ABC):
 
     def __exit__(self, type, value, traceback):
         self.close()
+
+    @abstractmethod
+    async def _fetch_prefix(
+        self, start_prefix: str, glob: Optional[str], result_queue: ResultQueue
+    ) -> None: ...
+
+    @abstractmethod
+    async def _read(self, path: str, version: Optional[str] = None) -> bytes: ...
 
     @classmethod
     def create_fs(cls, **kwargs) -> "AbstractFileSystem":
@@ -132,17 +143,37 @@ class Client(ABC):
         self, start_prefix: str, glob: Optional[str] = None
     ) -> AsyncIterator[File]:
         result_queue: ResultQueue = asyncio.Queue(200)
-        main_task = self.loop.create_task(self._fetch(start_prefix, glob, result_queue))
+        main_task = self.loop.create_task(
+            self._fetch_prefix(start_prefix, glob, result_queue)
+        )
 
         while (file := await result_queue.get()) is not None:
             yield file
 
         await main_task
 
-    @abstractmethod
-    async def _fetch(
-        self, start_prefix: str, glob: Optional[str], result_queue: ResultQueue
-    ) -> None: ...
+    async def iter_pointers(self, pointers: list[FilePointer]) -> AsyncIterator[File]:
+        result_queue: ResultQueue = asyncio.Queue(200)
+        main_task = self.loop.create_task(self._fetch_list(pointers, result_queue))
+
+        while (file := await result_queue.get()) is not None:
+            yield file
+
+        await main_task
+
+    async def _fetch_list(
+        self, pointers: list[FilePointer], result_queue: ResultQueue
+    ) -> None:
+        tasks = []
+        for i, pointer in enumerate(pointers):
+            task = queue_task_result(self._read_file(pointer), result_queue, self.loop)
+            tasks.append(task)
+            if i % 5000 == 0:
+                await asyncio.gather(*tasks)
+                tasks = []
+
+        await asyncio.gather(*tasks)
+        await result_queue.put(None)
 
     @staticmethod
     def _is_valid_key(key: str) -> bool:
@@ -152,3 +183,8 @@ class Client(ABC):
         Invalid keys are ignored when indexing.
         """
         return not (key.startswith("/") or key.endswith("/") or "//" in key)
+
+    async def _read_file(self, pointer: FilePointer) -> File:
+        async with self.max_concurrent_reads:
+            contents = await self._read(pointer.path, pointer.version)
+            return (pointer, contents)
