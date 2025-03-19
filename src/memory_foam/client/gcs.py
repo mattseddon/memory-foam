@@ -1,19 +1,13 @@
-import asyncio
 import json
 import os
 from datetime import datetime
 from typing import Any, Optional, cast
-
 from dateutil.parser import isoparse
 from gcsfs import GCSFileSystem
 from gcsfs.retry import retry_request
 
-
-from ..asyn import queue_task_result
+from .fsspec import Client, PageQueue
 from ..file import FilePointer
-from ..glob import get_glob_match, is_match
-
-from .fsspec import Client, PageQueue, ResultQueue
 
 # Patch gcsfs for consistency with s3fs
 GCSFileSystem.set_session = GCSFileSystem._set_session
@@ -47,38 +41,11 @@ class GCSClient(Client):
     def close(self):
         pass
 
-    async def _process_pages(
-        self,
-        prefix: str,
-        page_queue: PageQueue,
-        glob: Optional[str],
-        result_queue: ResultQueue,
-    ):
-        glob_match = get_glob_match(glob)
+    @property
+    def _path_key(self):
+        return "name"
 
-        found = False
-        while (page := await page_queue.get()) is not None:
-            if page:
-                found = True
-
-                tasks = []
-                for d in page:
-                    if not (
-                        self._is_valid_key(d["name"])
-                        and is_match(d["name"], glob_match)
-                    ):
-                        continue
-                    pointer = self._info_to_file_pointer(d)
-                    task = queue_task_result(
-                        self._read_file(pointer), result_queue, self.loop
-                    )
-                    tasks.append(task)
-                await asyncio.gather(*tasks)
-
-        if not found:
-            raise FileNotFoundError(f"Unable to resolve remote path: {prefix}")
-
-    async def _get_pages(self, path: str, page_queue: PageQueue) -> None:
+    async def _get_pages(self, prefix: str, page_queue: PageQueue) -> None:
         page_size = 5000
         try:
             next_page_token = None
@@ -88,7 +55,7 @@ class GCSClient(Client):
                     "b/{}/o",
                     self.name,
                     delimiter="",
-                    prefix=path,
+                    prefix=prefix,
                     maxResults=page_size,
                     pageToken=next_page_token,
                     json_out=True,

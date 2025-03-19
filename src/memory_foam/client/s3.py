@@ -1,14 +1,9 @@
-import asyncio
 from typing import Any, Optional, cast
 from s3fs import S3FileSystem
-
-
-from ..asyn import queue_task_result
-from ..file import FilePointer
-from ..glob import get_glob_match, is_match
-from .fsspec import Client, PageQueue, ResultQueue
-
 from botocore.exceptions import NoCredentialsError
+
+from ..file import FilePointer
+from .fsspec import Client, PageQueue
 
 
 class ClientS3(Client):
@@ -53,39 +48,9 @@ class ClientS3(Client):
     def close(self):
         self.fs.close_session(self.loop, self.s3)
 
-    async def _process_pages(
-        self,
-        prefix,
-        page_queue: PageQueue,
-        glob: Optional[str],
-        result_queue: ResultQueue,
-    ):
-        glob_match = get_glob_match(glob)
-
-        try:
-            found = False
-
-            while (page := await page_queue.get()) is not None:
-                if page:
-                    found = True
-
-                tasks = []
-                for d in page:
-                    if not (
-                        self._is_valid_key(d["Key"]) and is_match(d["Key"], glob_match)
-                    ):
-                        continue
-                    pointer = self._info_to_file_pointer(d)
-                    task = queue_task_result(
-                        self._read_file(pointer), result_queue, self.loop
-                    )
-                    tasks.append(task)
-                await asyncio.gather(*tasks)
-
-            if not found:
-                raise FileNotFoundError(f"Unable to resolve remote path: {prefix}")
-        finally:
-            await result_queue.put(None)
+    @property
+    def _path_key(self):
+        return "Key"
 
     async def _get_pages(self, prefix, page_queue: PageQueue):
         try:

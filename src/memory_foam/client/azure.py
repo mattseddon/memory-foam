@@ -1,20 +1,16 @@
 import asyncio
 import os
 import errno
-from typing import Any, AsyncIterable, Optional
+from typing import Any, AsyncIterable, Callable, Optional
 from urllib.parse import parse_qs, urlsplit, urlunsplit
-
 from adlfs import AzureBlobFileSystem
 from azure.core.exceptions import (
     ResourceNotFoundError,
 )
 
-
+from .fsspec import Client, ResultQueue
 from ..asyn import queue_task_result
-from ..glob import get_glob_match, is_match
 from ..file import FilePointer
-
-from .fsspec import DELIMITER, Client, ResultQueue
 
 PageQueue = asyncio.Queue[Optional[AsyncIterable[dict[str, Any]]]]
 
@@ -24,11 +20,7 @@ class AzureClient(Client):
     PREFIX = "az://"
     protocol = "az"
 
-    async def _get_pages(self, start_prefix: str, page_queue) -> None:
-        prefix = start_prefix
-        if prefix:
-            prefix = prefix.lstrip(DELIMITER) + DELIMITER
-
+    async def _get_pages(self, prefix: str, page_queue) -> None:
         try:
             async with self.fs.service_client.get_container_client(
                 container=self.name
@@ -40,37 +32,25 @@ class AzureClient(Client):
         finally:
             await page_queue.put(None)
 
-    async def _process_pages(
+    @property
+    def _path_key(self) -> str:
+        return "name"
+
+    async def _process_page_async(
         self,
-        start_prefix: str,
-        page_queue,
-        glob: Optional[str],
+        page: AsyncIterable,
+        glob_match: Optional[Callable],
         result_queue: ResultQueue,
     ):
-        found = False
-
-        glob_match = get_glob_match(glob)
-
-        while (page := await page_queue.get()) is not None:
-            if page:
-                found = True
-
-            tasks = []
-            async for b in page:
-                if not (
-                    self._is_valid_key(b["name"]) and is_match(b["name"], glob_match)
-                ):
-                    continue
-                info = (await self.fs._details([b]))[0]
-                pointer = self._info_to_file_pointer(info)
-                task = queue_task_result(
-                    self._read_file(pointer), result_queue, self.loop
-                )
-                tasks.append(task)
-            await asyncio.gather(*tasks)
-
-        if not found:
-            raise FileNotFoundError(f"Unable to resolve remote path: {start_prefix}")
+        tasks = []
+        async for b in page:
+            if not self._should_read(b, glob_match):
+                continue
+            info = (await self.fs._details([b]))[0]
+            pointer = self._info_to_file_pointer(info)
+            task = queue_task_result(self._read_file(pointer), result_queue, self.loop)
+            tasks.append(task)
+        return tasks
 
     def _info_to_file_pointer(self, v: dict[str, Any]) -> FilePointer:
         return FilePointer(

@@ -2,20 +2,32 @@ from abc import ABC, abstractmethod
 import asyncio
 import multiprocessing
 import os
-from typing import Any, AsyncIterator, ClassVar, Iterable, Optional
+from typing import (
+    Any,
+    AsyncIterable,
+    AsyncIterator,
+    Callable,
+    ClassVar,
+    Iterable,
+    Optional,
+    Union,
+)
 from fsspec.spec import AbstractFileSystem
 from urllib.parse import urlparse
 
-from memory_foam.asyn import queue_task_result
-
+from ..asyn import queue_task_result
 from ..file import File, FilePointer
+from ..glob import get_glob_match, is_match
+
 
 DELIMITER = "/"  # Path delimiter.
 FETCH_WORKERS = 100
 
 
 ResultQueue = asyncio.Queue[Optional[File]]
-PageQueue = asyncio.Queue[Optional[Iterable[dict[str, Any]]]]
+PageQueue = asyncio.Queue[
+    Optional[Union[Iterable[dict[str, Any]], AsyncIterable[dict[str, Any]]]]
+]
 
 
 class ClientError(RuntimeError):
@@ -49,13 +61,7 @@ class Client(ABC):
         self.close()
 
     @abstractmethod
-    async def _process_pages(
-        self,
-        prefix: str,
-        page_queue: PageQueue,
-        glob: Optional[str],
-        result_queue: ResultQueue,
-    ) -> None: ...
+    def close(self) -> None: ...
 
     @abstractmethod
     async def _get_pages(self, prefix: str, page_queue: PageQueue) -> None: ...
@@ -63,15 +69,19 @@ class Client(ABC):
     @abstractmethod
     async def _read(self, path: str, version: Optional[str] = None) -> bytes: ...
 
+    @abstractmethod
+    def _info_to_file_pointer(self, v: dict[str, Any]) -> FilePointer: ...
+
+    @property
+    @abstractmethod
+    def _path_key(self) -> str: ...
+
     @classmethod
     def create_fs(cls, **kwargs) -> "AbstractFileSystem":
         kwargs.setdefault("version_aware", True)
         fs = cls.FS_CLASS(**kwargs)
         fs.invalidate_cache()
         return fs
-
-    @abstractmethod
-    def close(self) -> None: ...
 
     @property
     def fs(self) -> AbstractFileSystem:
@@ -177,6 +187,50 @@ class Client(ABC):
         finally:
             await result_queue.put(None)
 
+    # make abstract and move to syncPageProcessor class
+    async def _process_pages(
+        self,
+        prefix: str,
+        page_queue: PageQueue,
+        glob: Optional[str],
+        result_queue: ResultQueue,
+    ):
+        glob_match = get_glob_match(glob)
+
+        try:
+            found = False
+
+            while (page := await page_queue.get()) is not None:
+                if page:
+                    found = True
+
+                if not hasattr(page, "__aiter__"):
+                    tasks = self._process_page(page, glob_match, result_queue)
+                else:
+                    assert hasattr(self, "_process_page_async")
+                    tasks = await self._process_page_async(
+                        page, glob_match, result_queue
+                    )
+
+                await asyncio.gather(*tasks)
+
+            if not found:
+                raise FileNotFoundError(f"Unable to resolve remote path: {prefix}")
+        finally:
+            await result_queue.put(None)
+
+    def _process_page(
+        self, page: Iterable, glob_match: Optional[Callable], result_queue: ResultQueue
+    ):
+        tasks = []
+        for d in page:
+            if not self._should_read(d, glob_match):
+                continue
+            pointer = self._info_to_file_pointer(d)
+            task = queue_task_result(self._read_file(pointer), result_queue, self.loop)
+            tasks.append(task)
+        return tasks
+
     async def iter_pointers(self, pointers: list[FilePointer]) -> AsyncIterator[File]:
         result_queue: ResultQueue = asyncio.Queue(200)
         main_task = self.loop.create_task(self._fetch_list(pointers, result_queue))
@@ -199,6 +253,11 @@ class Client(ABC):
 
         await asyncio.gather(*tasks)
         await result_queue.put(None)
+
+    def _should_read(self, d: dict, glob_match: Optional[Callable]) -> bool:
+        return self._is_valid_key(d[self._path_key]) and is_match(
+            d[self._path_key], glob_match
+        )
 
     @staticmethod
     def _is_valid_key(key: str) -> bool:

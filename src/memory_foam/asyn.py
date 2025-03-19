@@ -6,7 +6,9 @@ from typing import AsyncIterable, Awaitable, Iterator, TypeVar
 T = TypeVar("T")
 
 
-async def queue_task_result(coro: Awaitable[T], queue: asyncio.Queue, loop=get_loop()):
+async def queue_task_result(
+    coro: Awaitable[T], queue: asyncio.Queue, loop=get_loop()
+) -> asyncio.Task:
     task = asyncio.ensure_future(coro, loop=loop)
     result = await task
     await queue.put(result)
