@@ -13,7 +13,7 @@ from ..asyn import queue_task_result
 from ..file import FilePointer
 from ..glob import get_glob_match, is_match
 
-from .fsspec import DELIMITER, Client, PageQueue, ResultQueue
+from .fsspec import Client, PageQueue, ResultQueue
 
 # Patch gcsfs for consistency with s3fs
 GCSFileSystem.set_session = GCSFileSystem._set_session
@@ -47,31 +47,13 @@ class GCSClient(Client):
     def close(self):
         pass
 
-    async def _fetch_prefix(
-        self, start_prefix: str, glob: Optional[str], result_queue: ResultQueue
-    ) -> None:
-        prefix = start_prefix
-        if prefix:
-            prefix = prefix.lstrip(DELIMITER) + DELIMITER
-        found = False
-        try:
-            page_queue: PageQueue = asyncio.Queue(2)
-            page_consumer = self.loop.create_task(
-                self._process_pages(page_queue, glob, result_queue)
-            )
-            try:
-                await self._get_pages(prefix, page_queue)
-                found = await page_consumer
-                if not found:
-                    raise FileNotFoundError(f"Unable to resolve remote path: {prefix}")
-            finally:
-                page_consumer.cancel()  # In case _get_pages() raised
-        finally:
-            await result_queue.put(None)
-
     async def _process_pages(
-        self, page_queue: PageQueue, glob: Optional[str], result_queue: ResultQueue
-    ) -> bool:
+        self,
+        prefix: str,
+        page_queue: PageQueue,
+        glob: Optional[str],
+        result_queue: ResultQueue,
+    ):
         glob_match = get_glob_match(glob)
 
         found = False
@@ -93,7 +75,8 @@ class GCSClient(Client):
                     tasks.append(task)
                 await asyncio.gather(*tasks)
 
-        return found
+        if not found:
+            raise FileNotFoundError(f"Unable to resolve remote path: {prefix}")
 
     async def _get_pages(self, path: str, page_queue: PageQueue) -> None:
         page_size = 5000
@@ -123,7 +106,7 @@ class GCSClient(Client):
         info = self.fs._process_object(self.name, d)
         return FilePointer(
             source=self.uri,
-            path=self.rel_path(info["name"]),
+            path=self._rel_path(info["name"]),
             size=info.get("size", ""),
             version=info.get("generation", ""),
             last_modified=self.parse_timestamp(info["updated"]),
@@ -131,7 +114,7 @@ class GCSClient(Client):
 
     @retry_request(retries=6)
     async def _read(self, path: str, version: Optional[str] = None) -> bytes:
-        url = self.fs.url(self.get_full_path(path, version))
+        url = self.fs.url(self._get_full_path(path, version))
         await self.fs._set_session()
         async with self.fs.session.get(
             url=url,
@@ -152,6 +135,6 @@ class GCSClient(Client):
             return byts
 
     @classmethod
-    def version_path(cls, path: str, version_id: Optional[str]) -> str:
+    def _version_path(cls, path: str, version_id: Optional[str]) -> str:
         # return path
         return f"{path}#{version_id}" if version_id else path

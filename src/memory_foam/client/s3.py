@@ -6,7 +6,7 @@ from s3fs import S3FileSystem
 from ..asyn import queue_task_result
 from ..file import FilePointer
 from ..glob import get_glob_match, is_match
-from .fsspec import DELIMITER, Client, PageQueue, ResultQueue
+from .fsspec import Client, PageQueue, ResultQueue
 
 from botocore.exceptions import NoCredentialsError
 
@@ -53,75 +53,57 @@ class ClientS3(Client):
     def close(self):
         self.fs.close_session(self.loop, self.s3)
 
-    async def _fetch_prefix(
-        self, start_prefix: str, glob: Optional[str], result_queue: ResultQueue
-    ) -> None:
-        async def get_pages(it, page_queue: PageQueue):
-            try:
-                async for page in it:
-                    await page_queue.put(page.get(contents_key, []))
-            finally:
-                await page_queue.put(None)
-
-        async def process_pages(
-            page_queue: PageQueue, glob: Optional[str], result_queue: ResultQueue
-        ):
-            glob_match = get_glob_match(glob)
-
-            try:
-                found = False
-
-                while (page := await page_queue.get()) is not None:
-                    if page:
-                        found = True
-
-                    tasks = []
-                    for d in page:
-                        if not (
-                            self._is_valid_key(d["Key"])
-                            and is_match(d["Key"], glob_match)
-                        ):
-                            continue
-                        pointer = self._info_to_file_pointer(d)
-                        task = queue_task_result(
-                            self._read_file(pointer), result_queue, self.loop
-                        )
-                        tasks.append(task)
-                    await asyncio.gather(*tasks)
-
-                if not found:
-                    raise FileNotFoundError(f"Unable to resolve remote path: {prefix}")
-            finally:
-                await result_queue.put(None)
+    async def _process_pages(
+        self,
+        prefix,
+        page_queue: PageQueue,
+        glob: Optional[str],
+        result_queue: ResultQueue,
+    ):
+        glob_match = get_glob_match(glob)
 
         try:
-            prefix = start_prefix
-            if prefix:
-                prefix = prefix.lstrip(DELIMITER) + DELIMITER
-            versions = True
+            found = False
+
+            while (page := await page_queue.get()) is not None:
+                if page:
+                    found = True
+
+                tasks = []
+                for d in page:
+                    if not (
+                        self._is_valid_key(d["Key"]) and is_match(d["Key"], glob_match)
+                    ):
+                        continue
+                    pointer = self._info_to_file_pointer(d)
+                    task = queue_task_result(
+                        self._read_file(pointer), result_queue, self.loop
+                    )
+                    tasks.append(task)
+                await asyncio.gather(*tasks)
+
+            if not found:
+                raise FileNotFoundError(f"Unable to resolve remote path: {prefix}")
+        finally:
+            await result_queue.put(None)
+
+    async def _get_pages(self, prefix, page_queue: PageQueue):
+        try:
             await self._setup_fs()
-            if versions:
-                method = "list_object_versions"
-                contents_key = "Versions"
-            else:
-                method = "list_objects_v2"
-                contents_key = "Contents"
+
+            method = "list_object_versions"
+            contents_key = "Versions"
             pag = self.s3.get_paginator(method)
             it = pag.paginate(
                 Bucket=self.name,
                 Prefix=prefix,
                 Delimiter="",
             )
-            page_queue: PageQueue = asyncio.Queue(2)
-            page_consumer = self.loop.create_task(
-                process_pages(page_queue, glob, result_queue)
-            )
-            try:
-                await asyncio.gather(get_pages(it, page_queue), page_consumer)
-            finally:
-                page_consumer.cancel()
+
+            async for page in it:
+                await page_queue.put(page.get(contents_key, []))
         finally:
-            await result_queue.put(None)
+            await page_queue.put(None)
 
     async def _setup_fs(self):
         fs = self.fs
@@ -133,7 +115,7 @@ class ClientS3(Client):
         return await super()._fetch_list(pointers, result_queue)
 
     async def _read(self, path: str, version: Optional[str] = None) -> bytes:
-        stream = await self.fs.open_async(self.get_full_path(path, version))
+        stream = await self.fs.open_async(self._get_full_path(path, version))
         return await stream.read()
 
     def _info_to_file_pointer(

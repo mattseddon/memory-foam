@@ -39,7 +39,7 @@ class Client(ABC):
         self.name = name
         self.fs_kwargs = fs_kwargs
         self._fs: Optional[AbstractFileSystem] = None
-        self.uri = self.get_uri(self.name)
+        self.uri = self._get_uri(self.name)
         self.loop = loop
 
     def __enter__(self):
@@ -49,9 +49,16 @@ class Client(ABC):
         self.close()
 
     @abstractmethod
-    async def _fetch_prefix(
-        self, start_prefix: str, glob: Optional[str], result_queue: ResultQueue
+    async def _process_pages(
+        self,
+        prefix: str,
+        page_queue: PageQueue,
+        glob: Optional[str],
+        result_queue: ResultQueue,
     ) -> None: ...
+
+    @abstractmethod
+    async def _get_pages(self, prefix: str, page_queue: PageQueue) -> None: ...
 
     @abstractmethod
     async def _read(self, path: str, version: Optional[str] = None) -> bytes: ...
@@ -117,9 +124,9 @@ class Client(ABC):
 
     def parse_url(self, source: str) -> tuple[str, str]:
         storage_name, rel_path = self.split_url(source)
-        return self.get_uri(storage_name), rel_path
+        return self._get_uri(storage_name), rel_path
 
-    def get_uri(self, name: str) -> str:
+    def _get_uri(self, name: str) -> str:
         return f"{self.PREFIX}{name}"
 
     @classmethod
@@ -130,13 +137,13 @@ class Client(ABC):
         path = path_split[1] if len(path_split) > 1 else ""
         return bucket, path
 
-    def rel_path(self, path: str) -> str:
+    def _rel_path(self, path: str) -> str:
         return self.fs.split_path(path)[1]
 
-    def get_full_path(self, rel_path: str, version_id: Optional[str] = None) -> str:
-        return self.version_path(f"{self.PREFIX}{self.name}/{rel_path}", version_id)
+    def _get_full_path(self, rel_path: str, version_id: Optional[str] = None) -> str:
+        return self._version_path(f"{self.PREFIX}{self.name}/{rel_path}", version_id)
 
-    def version_path(cls, path: str, version_id: Optional[str]) -> str:
+    def _version_path(cls, path: str, version_id: Optional[str]) -> str:
         return path
 
     async def iter_files(
@@ -151,6 +158,24 @@ class Client(ABC):
             yield file
 
         await main_task
+
+    async def _fetch_prefix(
+        self, start_prefix: str, glob: Optional[str], result_queue: ResultQueue
+    ) -> None:
+        try:
+            prefix = start_prefix
+            if prefix:
+                prefix = prefix.lstrip(DELIMITER) + DELIMITER
+            page_queue: PageQueue = asyncio.Queue(2)
+            page_consumer = self.loop.create_task(
+                self._process_pages(prefix, page_queue, glob, result_queue)
+            )
+            try:
+                await asyncio.gather(self._get_pages(prefix, page_queue), page_consumer)
+            finally:
+                page_consumer.cancel()
+        finally:
+            await result_queue.put(None)
 
     async def iter_pointers(self, pointers: list[FilePointer]) -> AsyncIterator[File]:
         result_queue: ResultQueue = asyncio.Queue(200)
