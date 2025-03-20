@@ -1,18 +1,25 @@
-import os
+try:
+    import os
 
-from matplotlib import pyplot as plt
+    from matplotlib import pyplot as plt
 
+    os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
 
-os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
+    from huggingface_hub import hf_hub_download
+    import open_clip
 
-from huggingface_hub import hf_hub_download
-import open_clip
+    from io import BytesIO
+    from memory_foam import FilePointer, iter_files, iter_pointers
+    from PIL import Image
+    from tqdm.auto import tqdm
+    import duckdb
+except ImportError:
+    print(
+        "There are missing dependencies, install the memory-foam package with the [examples] optional extras."
+    )
+    import sys
 
-from io import BytesIO
-from memory_foam import FilePointer, iter_files, iter_pointers
-from PIL import Image
-from tqdm.auto import tqdm
-import duckdb
+    sys.exit(1)
 
 current_directory = os.path.dirname(os.path.abspath(__file__))
 db_path = os.path.join(current_directory, "embeddings.duckdb")

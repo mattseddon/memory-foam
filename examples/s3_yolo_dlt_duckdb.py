@@ -1,14 +1,22 @@
-import os
+try:
+    import os
 
+    os.environ["YOLO_VERBOSE"] = "false"
 
-os.environ["YOLO_VERBOSE"] = "false"
+    from io import BytesIO
+    from memory_foam import iter_files, FilePointer
+    from PIL import Image
+    from ultralytics import YOLO
+    from tqdm.auto import tqdm
+    import dlt
 
-from io import BytesIO
-from memory_foam import iter_files, FilePointer
-from PIL import Image
-from ultralytics import YOLO
-from tqdm.auto import tqdm
-import dlt
+except ImportError:
+    print(
+        "There are missing dependencies, install the memory-foam package with the [examples] optional extras."
+    )
+    import sys
+
+    sys.exit(1)
 
 
 def transform_yolo_results(pointer: FilePointer, results):
