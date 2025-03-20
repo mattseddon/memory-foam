@@ -75,7 +75,7 @@ class AzureClient(Client):
             ) as bc:
                 stream = await bc.download_blob(
                     version_id=version,
-                    max_concurrency=1,
+                    max_concurrency=self.fs.max_concurrency,
                     **self.fs._timeout_kwargs,
                 )
                 return await stream.readall()
