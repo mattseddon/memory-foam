@@ -32,3 +32,15 @@ for pointer, contents in iter_files(uri, glob, client_config):
     data = pointer.to_dict_with(results)
     save(data)
 ```
+
+## Credentials
+
+This package uses the `fsspec` implementations for S3, GCS and Azure. Entries from the `client_config` dictionary are passed to the respective `fsspec` clients.
+
+However, you can use the same authentication setup as the individual `fsspec` packages.
+
+The documentation for each of the clients is linked below:
+
+- S3:  https://s3fs.readthedocs.io/en/latest/#credentials
+- GCS: https://gcsfs.readthedocs.io/en/latest/#credentials
+- Azure: https://github.com/fsspec/adlfs?tab=readme-ov-file#setting-credentials
