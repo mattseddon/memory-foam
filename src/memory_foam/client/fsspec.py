@@ -16,9 +16,9 @@ from typing import (
 from fsspec.spec import AbstractFileSystem
 from urllib.parse import urlparse
 
-from memory_foam.datetime import is_modified_after
 
 from ..asyn import queue_task_result
+from ..dttime import is_modified_after
 from ..file import File, FilePointer
 from ..glob import get_glob_match, is_match
 
