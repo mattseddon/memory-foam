@@ -103,5 +103,4 @@ class GCSClient(Client):
 
     @classmethod
     def _version_path(cls, path: str, version_id: Optional[str]) -> str:
-        # return path
         return f"{path}#{version_id}" if version_id else path

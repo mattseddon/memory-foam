@@ -187,7 +187,6 @@ class Client(ABC):
         finally:
             await result_queue.put(None)
 
-    # make abstract and move to syncPageProcessor class
     async def _process_pages(
         self,
         prefix: str,

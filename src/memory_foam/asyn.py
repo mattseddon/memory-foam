@@ -22,7 +22,6 @@ def sync_iter_async(
 
     ait = ait.__aiter__()
 
-    # helper async fn that just gets the next element from the async iterator
     async def get_next():
         try:
             obj = await ait.__anext__()
@@ -30,7 +29,6 @@ def sync_iter_async(
         except StopAsyncIteration:
             return True, None
 
-    # actual sync iterator
     while True:
         done, obj = asyncio.run_coroutine_threadsafe(get_next(), loop).result()
         if done:
