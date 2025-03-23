@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 import asyncio
+from datetime import datetime
 import multiprocessing
 import os
 from typing import (
@@ -14,6 +15,8 @@ from typing import (
 )
 from fsspec.spec import AbstractFileSystem
 from urllib.parse import urlparse
+
+from memory_foam.datetime import is_modified_after
 
 from ..asyn import queue_task_result
 from ..file import File, FilePointer
@@ -75,6 +78,9 @@ class Client(ABC):
     @property
     @abstractmethod
     def _path_key(self) -> str: ...
+
+    @abstractmethod
+    def _get_last_modified(self, d: dict) -> datetime: ...
 
     @classmethod
     def create_fs(cls, **kwargs) -> "AbstractFileSystem":
@@ -157,11 +163,14 @@ class Client(ABC):
         return path
 
     async def iter_files(
-        self, start_prefix: str, glob: Optional[str] = None
+        self,
+        start_prefix: str,
+        glob: Optional[str] = None,
+        modified_after: Optional[datetime] = None,
     ) -> AsyncIterator[File]:
         result_queue: ResultQueue = asyncio.Queue(200)
         main_task = self.loop.create_task(
-            self._fetch_prefix(start_prefix, glob, result_queue)
+            self._fetch_prefix(start_prefix, glob, modified_after, result_queue)
         )
 
         while (file := await result_queue.get()) is not None:
@@ -170,7 +179,11 @@ class Client(ABC):
         await main_task
 
     async def _fetch_prefix(
-        self, start_prefix: str, glob: Optional[str], result_queue: ResultQueue
+        self,
+        start_prefix: str,
+        glob: Optional[str],
+        modified_after: Optional[datetime],
+        result_queue: ResultQueue,
     ) -> None:
         try:
             prefix = start_prefix
@@ -178,7 +191,9 @@ class Client(ABC):
                 prefix = prefix.lstrip(DELIMITER) + DELIMITER
             page_queue: PageQueue = asyncio.Queue(2)
             page_consumer = self.loop.create_task(
-                self._process_pages(prefix, page_queue, glob, result_queue)
+                self._process_pages(
+                    prefix, page_queue, glob, modified_after, result_queue
+                )
             )
             try:
                 await asyncio.gather(self._get_pages(prefix, page_queue), page_consumer)
@@ -192,6 +207,7 @@ class Client(ABC):
         prefix: str,
         page_queue: PageQueue,
         glob: Optional[str],
+        modified_after: Optional[datetime],
         result_queue: ResultQueue,
     ):
         glob_match = get_glob_match(glob)
@@ -204,11 +220,13 @@ class Client(ABC):
                     found = True
 
                 if not hasattr(page, "__aiter__"):
-                    tasks = self._process_page(page, glob_match, result_queue)
+                    tasks = self._process_page(
+                        page, glob_match, modified_after, result_queue
+                    )
                 else:
                     assert hasattr(self, "_process_page_async")
                     tasks = await self._process_page_async(
-                        page, glob_match, result_queue
+                        page, glob_match, modified_after, result_queue
                     )
 
                 await asyncio.gather(*tasks)
@@ -219,11 +237,15 @@ class Client(ABC):
             await result_queue.put(None)
 
     def _process_page(
-        self, page: Iterable, glob_match: Optional[Callable], result_queue: ResultQueue
+        self,
+        page: Iterable,
+        glob_match: Optional[Callable],
+        modified_after: Optional[datetime],
+        result_queue: ResultQueue,
     ):
         tasks = []
         for d in page:
-            if not self._should_read(d, glob_match):
+            if not self._should_read(d, glob_match, modified_after):
                 continue
             pointer = self._info_to_file_pointer(d)
             task = queue_task_result(self._read_file(pointer), result_queue, self.loop)
@@ -253,9 +275,16 @@ class Client(ABC):
         await asyncio.gather(*tasks)
         await result_queue.put(None)
 
-    def _should_read(self, d: dict, glob_match: Optional[Callable]) -> bool:
-        return self._is_valid_key(d[self._path_key]) and is_match(
-            d[self._path_key], glob_match
+    def _should_read(
+        self,
+        d: dict,
+        glob_match: Optional[Callable],
+        modified_after: Optional[datetime],
+    ) -> bool:
+        return (
+            self._is_valid_key(d[self._path_key])
+            and is_match(d[self._path_key], glob_match)
+            and is_modified_after(d, self._get_last_modified, modified_after)
         )
 
     @staticmethod

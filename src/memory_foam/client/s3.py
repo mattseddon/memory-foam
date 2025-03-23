@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Any, Optional, cast
 from s3fs import S3FileSystem
 from botocore.exceptions import NoCredentialsError
@@ -52,6 +53,9 @@ class ClientS3(Client):
     def _path_key(self):
         return "Key"
 
+    def _get_last_modified(self, d: dict) -> datetime:
+        return d.get("LastModified", "")
+
     async def _get_pages(self, prefix, page_queue: PageQueue):
         try:
             await self._setup_fs()
@@ -85,15 +89,15 @@ class ClientS3(Client):
 
     def _info_to_file_pointer(
         self,
-        v: dict[str, Any],
+        d: dict[str, Any],
     ) -> FilePointer:
-        version = self._clean_s3_version(v.get("VersionId", ""))
+        version = self._clean_s3_version(d.get("VersionId", ""))
         return FilePointer(
             source=self.uri,
-            path=v["Key"],
-            size=v["Size"],
+            path=d["Key"],
+            size=d["Size"],
             version=version,
-            last_modified=v.get("LastModified", ""),
+            last_modified=d.get("LastModified", ""),
         )
 
     def _clean_s3_version(self, ver: Optional[str]) -> str:

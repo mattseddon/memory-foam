@@ -1,4 +1,5 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from typing import Optional
 import pytest
 from memory_foam import iter_files, iter_pointers
 from memory_foam.asyn import get_loop
@@ -118,6 +119,49 @@ def test_iter_files_glob(client, cloud_type):
     ]
     assert len(results) == 2
     assert {res[0].path for res in results} == {"trees/oak.jpeg", "trees/pine.jpeg"}
+
+
+def _get_before_fixture_cutoff(num_results) -> tuple[datetime, int]:
+    return (datetime.now(utc) - timedelta(1), num_results)
+
+
+AFTER_FIXTURE_CUTOFF = (None, 0)
+
+
+def _update_after_fixture_cutoff(cutoff: Optional[datetime]) -> datetime:
+    if not cutoff:
+        return datetime.now(utc)
+    return cutoff
+
+
+@pytest.mark.parametrize(
+    ("cutoff", "num_results"),
+    [_get_before_fixture_cutoff(7), AFTER_FIXTURE_CUTOFF],
+)
+def test_iter_files_modified_after(client, cloud_type, cutoff, num_results):
+    cutoff = _update_after_fixture_cutoff(cutoff)
+    results = [
+        file
+        for file in iter_files(f"{client.PREFIX}{client.name}", modified_after=cutoff)
+    ]
+    assert len(results) == num_results
+
+
+@pytest.mark.parametrize(
+    ("cutoff", "num_results"),
+    [_get_before_fixture_cutoff(2), AFTER_FIXTURE_CUTOFF],
+)
+def test_iter_files_glob_modified_after(client, cloud_type, cutoff, num_results):
+    cutoff = _update_after_fixture_cutoff(cutoff)
+    results = [
+        file
+        for file in iter_files(
+            f"{client.PREFIX}{client.name}", glob="**/*.jpeg", modified_after=cutoff
+        )
+    ]
+    assert len(results) == num_results
+    if num_results:
+        assert {res[0].path for res in results} == {"trees/oak.jpeg", "trees/pine.jpeg"}
 
 
 def test_iter_pointers(client, cloud_type):

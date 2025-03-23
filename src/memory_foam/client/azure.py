@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime
 import os
 import errno
 from typing import Any, AsyncIterable, Callable, Optional
@@ -36,15 +37,19 @@ class AzureClient(Client):
     def _path_key(self) -> str:
         return "name"
 
+    def _get_last_modified(self, d: dict) -> datetime:
+        return d["last_modified"]
+
     async def _process_page_async(
         self,
         page: AsyncIterable,
         glob_match: Optional[Callable],
+        modified_after: Optional[datetime],
         result_queue: ResultQueue,
     ):
         tasks = []
         async for b in page:
-            if not self._should_read(b, glob_match):
+            if not self._should_read(b, glob_match, modified_after):
                 continue
             info = (await self.fs._details([b]))[0]
             pointer = self._info_to_file_pointer(info)
@@ -52,13 +57,13 @@ class AzureClient(Client):
             tasks.append(task)
         return tasks
 
-    def _info_to_file_pointer(self, v: dict[str, Any]) -> FilePointer:
+    def _info_to_file_pointer(self, d: dict[str, Any]) -> FilePointer:
         return FilePointer(
             source=self.uri,
-            path=self._rel_path(v["name"]),
-            version=v.get("version_id", ""),
-            last_modified=v["last_modified"],
-            size=v.get("size", ""),
+            path=self._rel_path(d["name"]),
+            version=d.get("version_id", ""),
+            last_modified=d["last_modified"],
+            size=d.get("size", ""),
         )
 
     def close(self):

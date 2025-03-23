@@ -45,6 +45,9 @@ class GCSClient(Client):
     def _path_key(self):
         return "name"
 
+    def _get_last_modified(self, d: dict):
+        return self.parse_timestamp(d["updated"])
+
     async def _get_pages(self, prefix: str, page_queue: PageQueue) -> None:
         page_size = 5000
         try:
@@ -76,7 +79,7 @@ class GCSClient(Client):
             path=self._rel_path(info["name"]),
             size=info.get("size", ""),
             version=info.get("generation", ""),
-            last_modified=self.parse_timestamp(info["updated"]),
+            last_modified=info.get("mtime", ""),
         )
 
     @retry_request(retries=6)
