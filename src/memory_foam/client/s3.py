@@ -47,7 +47,7 @@ class ClientS3(Client):
         return cast(S3FileSystem, super().create_fs(**kwargs))
 
     def close(self):
-        self.fs.close_session(self.loop, self.s3)
+        self.fs.close_session(self._loop, self.s3)
 
     @property
     def _path_key(self):
@@ -93,7 +93,7 @@ class ClientS3(Client):
     ) -> FilePointer:
         version = self._clean_s3_version(d.get("VersionId", ""))
         return FilePointer(
-            source=self.uri,
+            source=self._uri,
             path=d["Key"],
             size=d["Size"],
             version=version,

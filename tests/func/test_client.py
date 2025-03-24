@@ -14,7 +14,7 @@ _non_null_text = st.text(
 def test_parse_url(cloud_server, rel_path):
     bucket_uri = cloud_server.src_uri
     url = f"{bucket_uri}/{rel_path}"
-    client = Client.get_client(url, get_loop())
+    client = Client.get_client(url, get_loop(), None)
     uri, rel_part = client.parse_url(url)
     assert uri == bucket_uri
     assert rel_part == rel_path

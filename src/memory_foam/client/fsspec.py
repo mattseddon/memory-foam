@@ -45,17 +45,25 @@ class Client(ABC):
     FS_CLASS: ClassVar[type["AbstractFileSystem"]]
     PREFIX: ClassVar[str]
     protocol: ClassVar[str]
-    loop: AbstractEventLoop
-    max_concurrent_reads = Semaphore(32)
+    _loop: AbstractEventLoop
 
     def __init__(
-        self, name: str, loop: AbstractEventLoop, fs_kwargs: dict[str, Any]
+        self,
+        name: str,
+        loop: AbstractEventLoop,
+        max_concurrent_reads: int,
+        fs_kwargs: dict[str, Any],
     ) -> None:
         self.name = name
-        self.fs_kwargs = fs_kwargs
+        self._fs_kwargs = fs_kwargs
         self._fs: Optional[AbstractFileSystem] = None
-        self.uri = self._get_uri(self.name)
-        self.loop = loop
+        self._uri = self._get_uri(self.name)
+        self._loop = loop
+
+        if max_concurrent_reads is None or max_concurrent_reads <= 0:
+            self._max_concurrent_reads = None
+        else:
+            self._max_concurrent_reads = Semaphore(max_concurrent_reads)
 
     def __enter__(self):
         return self
@@ -93,7 +101,7 @@ class Client(ABC):
     def fs(self) -> AbstractFileSystem:
         if not self._fs:
             self._fs = self.create_fs(
-                **self.fs_kwargs, asynchronous=True, loop=self.loop
+                **self._fs_kwargs, asynchronous=True, loop=self._loop
             )
         return self._fs
 
@@ -121,22 +129,25 @@ class Client(ABC):
         raise NotImplementedError(f"Unsupported protocol: {protocol}")
 
     @staticmethod
-    def get_client(source: str, loop: AbstractEventLoop, **kwargs) -> "Client":
+    def get_client(
+        source: str, loop: AbstractEventLoop, max_concurrent_reads: int, **kwargs
+    ) -> "Client":
         cls = Client.get_implementation(source)
         storage_url, _ = cls.split_url(source)
         if os.name == "nt":
             storage_url = storage_url.removeprefix("/")
 
-        return cls.from_name(storage_url, loop, kwargs)
+        return cls.from_name(storage_url, loop, max_concurrent_reads, kwargs)
 
     @classmethod
     def from_name(
         cls,
         name: str,
         loop: AbstractEventLoop,
+        max_concurrent_reads: int,
         kwargs: dict[str, Any],
     ) -> "Client":
-        return cls(name, loop, kwargs)
+        return cls(name, loop, max_concurrent_reads, kwargs)
 
     def parse_url(self, source: str) -> tuple[str, str]:
         storage_name, rel_path = self.split_url(source)
@@ -169,7 +180,7 @@ class Client(ABC):
         modified_after: Optional[datetime] = None,
     ) -> AsyncIterator[File]:
         result_queue: ResultQueue = Queue(200)
-        main_task = self.loop.create_task(
+        main_task = self._loop.create_task(
             self._fetch_prefix(start_prefix, glob, modified_after, result_queue)
         )
 
@@ -190,7 +201,7 @@ class Client(ABC):
             if prefix:
                 prefix = prefix.lstrip(DELIMITER) + DELIMITER
             page_queue: PageQueue = Queue(2)
-            page_consumer = self.loop.create_task(
+            page_consumer = self._loop.create_task(
                 self._process_pages(
                     prefix, page_queue, glob, modified_after, result_queue
                 )
@@ -248,13 +259,15 @@ class Client(ABC):
             if not self._should_read(d, glob_match, modified_after):
                 continue
             pointer = self._info_to_file_pointer(d)
-            task = queue_task_result(self._read_file(pointer), result_queue, self.loop)
+            task = queue_task_result(
+                self._concurrent_read_file(pointer), result_queue, self._loop
+            )
             tasks.append(task)
         return tasks
 
     async def iter_pointers(self, pointers: list[FilePointer]) -> AsyncIterator[File]:
         result_queue: ResultQueue = Queue(200)
-        main_task = self.loop.create_task(self._fetch_list(pointers, result_queue))
+        main_task = self._loop.create_task(self._fetch_list(pointers, result_queue))
 
         while (file := await result_queue.get()) is not None:
             yield file
@@ -266,7 +279,9 @@ class Client(ABC):
     ) -> None:
         tasks = []
         for i, pointer in enumerate(pointers):
-            task = queue_task_result(self._read_file(pointer), result_queue, self.loop)
+            task = queue_task_result(
+                self._concurrent_read_file(pointer), result_queue, self._loop
+            )
             tasks.append(task)
             if i % 5000 == 0:
                 await gather(*tasks)
@@ -296,7 +311,13 @@ class Client(ABC):
         """
         return not (key.startswith("/") or key.endswith("/") or "//" in key)
 
+    async def _concurrent_read_file(self, pointer: FilePointer) -> File:
+        if not self._max_concurrent_reads:
+            return await self._read_file(pointer)
+
+        async with self._max_concurrent_reads:
+            return await self._read_file(pointer)
+
     async def _read_file(self, pointer: FilePointer) -> File:
-        async with self.max_concurrent_reads:
-            contents = await self._read(pointer.path, pointer.version)
-            return (pointer, contents)
+        contents = await self._read(pointer.path, pointer.version)
+        return (pointer, contents)

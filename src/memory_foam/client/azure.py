@@ -53,13 +53,15 @@ class AzureClient(Client):
                 continue
             info = (await self.fs._details([b]))[0]
             pointer = self._info_to_file_pointer(info)
-            task = queue_task_result(self._read_file(pointer), result_queue, self.loop)
+            task = queue_task_result(
+                self._concurrent_read_file(pointer), result_queue, self._loop
+            )
             tasks.append(task)
         return tasks
 
     def _info_to_file_pointer(self, d: dict[str, Any]) -> FilePointer:
         return FilePointer(
-            source=self.uri,
+            source=self._uri,
             path=self._rel_path(d["name"]),
             version=d.get("version_id", ""),
             last_modified=d["last_modified"],

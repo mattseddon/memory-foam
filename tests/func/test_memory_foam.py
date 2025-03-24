@@ -93,7 +93,7 @@ def suppress_client_gc_errors(mocker):
 def client(cloud_server, cloud_server_credentials, mocker, suppress_client_gc_errors):
     loop = get_loop()
     with Client.get_client(
-        cloud_server.src_uri, loop, **cloud_server.client_config
+        cloud_server.src_uri, loop, 32, **cloud_server.client_config
     ) as client:
         mocker.patch("memory_foam.client.Client.get_client", return_value=client)
         yield client

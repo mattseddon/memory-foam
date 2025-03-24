@@ -132,7 +132,9 @@ buffer: list[str] = []
 uri = "gs://datachain-demo/dogs-and-cats/"
 
 with tqdm(desc="Processing embeddings", unit=" files") as pbar:
-    for pointer, contents in iter_files(uri, "*.jpg", client_config={"anon": True}):
+    for pointer, contents in iter_files(
+        uri, glob="*.jpg", client_config={"anon": True}
+    ):
         img = preprocess(_open_image(contents)).unsqueeze(0)
         emb = model.encode_image(img).tolist()[0]
         buffer = _process_buffer(buffer, pointer, emb)
@@ -146,7 +148,7 @@ axarr = setup_plot()
 
 with tqdm(desc="Plotting images", unit=" files", total=3) as pbar:
     for i, (pointer, contents) in enumerate(
-        iter_pointers(source, pointers, {"anon": True})
+        iter_pointers(source, pointers=pointers, client_config={"anon": True})
     ):
         axarr[i].imshow(_open_image(contents))
         axarr[i].set_title(subplot_titles[pointer.path])

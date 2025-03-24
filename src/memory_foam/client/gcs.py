@@ -75,7 +75,7 @@ class GCSClient(Client):
     def _info_to_file_pointer(self, d: dict[str, Any]) -> FilePointer:
         info = self.fs._process_object(self.name, d)
         return FilePointer(
-            source=self.uri,
+            source=self._uri,
             path=self._rel_path(info["name"]),
             size=info.get("size", ""),
             version=info.get("generation", ""),
