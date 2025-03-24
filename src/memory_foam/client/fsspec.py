@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-import asyncio
+from asyncio import AbstractEventLoop, Queue, Semaphore, gather
 from datetime import datetime
 import multiprocessing
 import os
@@ -27,8 +27,8 @@ DELIMITER = "/"  # Path delimiter.
 FETCH_WORKERS = 100
 
 
-ResultQueue = asyncio.Queue[Optional[File]]
-PageQueue = asyncio.Queue[
+ResultQueue = Queue[Optional[File]]
+PageQueue = Queue[
     Optional[Union[Iterable[dict[str, Any]], AsyncIterable[dict[str, Any]]]]
 ]
 
@@ -45,11 +45,11 @@ class Client(ABC):
     FS_CLASS: ClassVar[type["AbstractFileSystem"]]
     PREFIX: ClassVar[str]
     protocol: ClassVar[str]
-    loop: asyncio.AbstractEventLoop
-    max_concurrent_reads = asyncio.Semaphore(32)
+    loop: AbstractEventLoop
+    max_concurrent_reads = Semaphore(32)
 
     def __init__(
-        self, name: str, loop: asyncio.AbstractEventLoop, fs_kwargs: dict[str, Any]
+        self, name: str, loop: AbstractEventLoop, fs_kwargs: dict[str, Any]
     ) -> None:
         self.name = name
         self.fs_kwargs = fs_kwargs
@@ -121,7 +121,7 @@ class Client(ABC):
         raise NotImplementedError(f"Unsupported protocol: {protocol}")
 
     @staticmethod
-    def get_client(source: str, loop: asyncio.AbstractEventLoop, **kwargs) -> "Client":
+    def get_client(source: str, loop: AbstractEventLoop, **kwargs) -> "Client":
         cls = Client.get_implementation(source)
         storage_url, _ = cls.split_url(source)
         if os.name == "nt":
@@ -133,7 +133,7 @@ class Client(ABC):
     def from_name(
         cls,
         name: str,
-        loop: asyncio.AbstractEventLoop,
+        loop: AbstractEventLoop,
         kwargs: dict[str, Any],
     ) -> "Client":
         return cls(name, loop, kwargs)
@@ -168,7 +168,7 @@ class Client(ABC):
         glob: Optional[str] = None,
         modified_after: Optional[datetime] = None,
     ) -> AsyncIterator[File]:
-        result_queue: ResultQueue = asyncio.Queue(200)
+        result_queue: ResultQueue = Queue(200)
         main_task = self.loop.create_task(
             self._fetch_prefix(start_prefix, glob, modified_after, result_queue)
         )
@@ -189,14 +189,14 @@ class Client(ABC):
             prefix = start_prefix
             if prefix:
                 prefix = prefix.lstrip(DELIMITER) + DELIMITER
-            page_queue: PageQueue = asyncio.Queue(2)
+            page_queue: PageQueue = Queue(2)
             page_consumer = self.loop.create_task(
                 self._process_pages(
                     prefix, page_queue, glob, modified_after, result_queue
                 )
             )
             try:
-                await asyncio.gather(self._get_pages(prefix, page_queue), page_consumer)
+                await gather(self._get_pages(prefix, page_queue), page_consumer)
             finally:
                 page_consumer.cancel()
         finally:
@@ -229,7 +229,7 @@ class Client(ABC):
                         page, glob_match, modified_after, result_queue
                     )
 
-                await asyncio.gather(*tasks)
+                await gather(*tasks)
 
             if not found:
                 raise FileNotFoundError(f"Unable to resolve remote path: {prefix}")
@@ -253,7 +253,7 @@ class Client(ABC):
         return tasks
 
     async def iter_pointers(self, pointers: list[FilePointer]) -> AsyncIterator[File]:
-        result_queue: ResultQueue = asyncio.Queue(200)
+        result_queue: ResultQueue = Queue(200)
         main_task = self.loop.create_task(self._fetch_list(pointers, result_queue))
 
         while (file := await result_queue.get()) is not None:
@@ -269,10 +269,10 @@ class Client(ABC):
             task = queue_task_result(self._read_file(pointer), result_queue, self.loop)
             tasks.append(task)
             if i % 5000 == 0:
-                await asyncio.gather(*tasks)
+                await gather(*tasks)
                 tasks = []
 
-        await asyncio.gather(*tasks)
+        await gather(*tasks)
         await result_queue.put(None)
 
     def _should_read(

@@ -1,4 +1,4 @@
-import asyncio
+from asyncio import Queue
 from datetime import datetime
 import os
 import errno
@@ -13,7 +13,7 @@ from .fsspec import Client, ResultQueue
 from ..asyn import queue_task_result
 from ..file import FilePointer
 
-PageQueue = asyncio.Queue[Optional[AsyncIterable[dict[str, Any]]]]
+PageQueue = Queue[Optional[AsyncIterable[dict[str, Any]]]]
 
 
 class AzureClient(Client):
