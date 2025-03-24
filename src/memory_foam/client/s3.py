@@ -4,7 +4,7 @@ from s3fs import S3FileSystem
 from botocore.exceptions import NoCredentialsError
 
 from ..file import FilePointer
-from .fsspec import Client, PageQueue
+from .fsspec import Client, PageQueue, ResultQueue
 
 
 class ClientS3(Client):
@@ -79,9 +79,13 @@ class ClientS3(Client):
         await fs.set_session()
         self.s3 = await fs.get_s3(self.name)
 
-    async def _fetch_list(self, pointers, result_queue):
+    async def _fetch_list(
+        self, pointers: list[FilePointer], batch_size: int, result_queue: ResultQueue
+    ):
         await self._setup_fs()
-        return await super()._fetch_list(pointers, result_queue)
+        return await super()._fetch_list(
+            pointers, batch_size=batch_size, result_queue=result_queue
+        )
 
     async def _read(self, path: str, version: Optional[str] = None) -> bytes:
         stream = await self.fs.open_async(self._get_full_path(path, version))

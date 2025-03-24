@@ -177,12 +177,15 @@ class Client(ABC):
         self,
         start_prefix: str,
         max_queued_results: int,
+        max_prefetch_pages: int,
         glob: Optional[str] = None,
         modified_after: Optional[datetime] = None,
     ) -> AsyncIterator[File]:
         result_queue: ResultQueue = Queue(max_queued_results)
         main_task = self._loop.create_task(
-            self._fetch_prefix(start_prefix, glob, modified_after, result_queue)
+            self._fetch_prefix(
+                start_prefix, glob, modified_after, max_prefetch_pages, result_queue
+            )
         )
 
         while (file := await result_queue.get()) is not None:
@@ -195,16 +198,21 @@ class Client(ABC):
         start_prefix: str,
         glob: Optional[str],
         modified_after: Optional[datetime],
+        max_prefetch_pages: int,
         result_queue: ResultQueue,
     ) -> None:
         try:
             prefix = start_prefix
             if prefix:
                 prefix = prefix.lstrip(DELIMITER) + DELIMITER
-            page_queue: PageQueue = Queue(2)
+            page_queue: PageQueue = Queue(max_prefetch_pages)
             page_consumer = self._loop.create_task(
                 self._process_pages(
-                    prefix, page_queue, glob, modified_after, result_queue
+                    prefix,
+                    page_queue=page_queue,
+                    glob=glob,
+                    modified_after=modified_after,
+                    result_queue=result_queue,
                 )
             )
             try:
@@ -233,12 +241,18 @@ class Client(ABC):
 
                 if not hasattr(page, "__aiter__"):
                     tasks = self._process_page(
-                        page, glob_match, modified_after, result_queue
+                        page,
+                        glob_match=glob_match,
+                        modified_after=modified_after,
+                        result_queue=result_queue,
                     )
                 else:
                     assert hasattr(self, "_process_page_async")
                     tasks = await self._process_page_async(
-                        page, glob_match, modified_after, result_queue
+                        page,
+                        glob_match=glob_match,
+                        modified_after=modified_after,
+                        result_queue=result_queue,
                     )
 
                 await gather(*tasks)
@@ -271,7 +285,7 @@ class Client(ABC):
     ) -> AsyncIterator[File]:
         result_queue: ResultQueue = Queue(max_queued_results)
         main_task = self._loop.create_task(
-            self._fetch_list(pointers, batch_size, result_queue)
+            self._fetch_list(pointers, batch_size=batch_size, result_queue=result_queue)
         )
 
         while (file := await result_queue.get()) is not None:

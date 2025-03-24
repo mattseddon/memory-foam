@@ -12,6 +12,7 @@ async def iter_files_async(
     modified_after: Optional[datetime] = None,
     max_concurrent_reads: int = 32,
     max_queued_results: int = 200,
+    max_prefetch_pages: int = 2,
     client_config: dict = {},
     loop=get_loop(),
 ) -> AsyncIterator[File]:
@@ -22,10 +23,12 @@ async def iter_files_async(
         uri (str): The URI of the storage location.
         glob (Optional[str]): A glob pattern to filter files. Defaults to None.
         modified_after (Optional[datetime]): A datetime to filter to files modified after. Defaults to None.
-        max_concurrent_reads (Optional[int]): The number of files that can be read concurrently.
+        max_concurrent_reads (Optional[int]): The max number of files that can be read concurrently.
             Defaults to 32. Set to -1 for unlimited concurrent reads.
         max_queued_results (Optional[int]): The number of Files in the results queue at any time.
             Defaults to 200.
+        max_prefetch_pages (Optional[int]): The max number of pages (from the fs paginated list output) queued
+            for reading any time. Defaults to 2.
         client_config (dict): Configuration options for the client. Defaults to an empty dictionary.
         loop: The event loop to use. Defaults to the default fsspec IO loop.
 
@@ -39,6 +42,7 @@ async def iter_files_async(
             glob=glob,
             modified_after=modified_after,
             max_queued_results=max_queued_results,
+            max_prefetch_pages=max_prefetch_pages,
         ):
             yield file
 
@@ -58,9 +62,9 @@ async def iter_pointers_async(
     Args:
         bucket (str): The bucket or container name.
         pointers (list[FilePointer]): A list of file pointers to iterate over.
-        max_concurrent_reads (Optional[int]): The number of files that can be read concurrently.
+        max_concurrent_reads (Optional[int]): The max number of files that can be read concurrently.
             Defaults to 32. Set to -1 for unlimited concurrent reads.
-        max_queued_results (Optional[int]): The number of Files in the results queue at any time.
+        max_queued_results (Optional[int]): The max number of Files in the results queue at any time.
             Defaults to 200.
         batch_size: (Optional[int]): The number of FilePointers per batch. Defaults to 5000.
         client_config (dict): Configuration options for the client. Defaults to an empty dictionary.
@@ -84,6 +88,7 @@ def iter_files(
     modified_after: Optional[datetime] = None,
     max_concurrent_reads: int = 32,
     max_queued_results: int = 200,
+    max_prefetch_pages: int = 2,
     client_config: dict = {},
 ) -> Iterator[File]:
     """
@@ -93,10 +98,12 @@ def iter_files(
         uri (str): The URI of the storage location.
         glob (Optional[str]): A glob pattern to filter files. Defaults to None.
         modified_after (Optional[datetime]): A datetime to filter to files modified after. Defaults to None.
-        max_concurrent_reads (Optional[int]): The number of files that can be read concurrently.
+        max_concurrent_reads (Optional[int]): The max number of files that can be read concurrently.
             Defaults to 32. Set to -1 for unlimited concurrent reads.
-        max_queued_results (Optional[int]): The number of Files in the results queue at any time.
+        max_queued_results (Optional[int]): The max number of Files in the results queue at any time.
             Defaults to 200.
+        max_prefetch_pages (Optional[int]): The max number of pages (from the fs paginated list output) queued
+            for reading any time. Defaults to 2.
         client_config (dict): Configuration options for the client. Defaults to an empty dictionary.
 
     Yields:
@@ -109,6 +116,7 @@ def iter_files(
         modified_after=modified_after,
         max_concurrent_reads=max_concurrent_reads,
         max_queued_results=max_queued_results,
+        max_prefetch_pages=max_prefetch_pages,
         client_config=client_config,
         loop=loop,
     )
@@ -130,9 +138,9 @@ def iter_pointers(
     Args:
         bucket (str): The bucket or container name.
         pointers (list[FilePointer]): A list of file pointers to iterate over.
-        max_concurrent_reads (Optional[int]): The number of files that can be read concurrently.
+        max_concurrent_reads (Optional[int]): The max number of files that can be read concurrently.
             Defaults to 32. Set to -1 for unlimited concurrent reads.
-        max_queued_results (Optional[int]): The number of Files in the results queue at any time.
+        max_queued_results (Optional[int]): The max number of Files in the results queue at any time.
             Defaults to 200.
         batch_size: (Optional[int]): The number of FilePointers per batch. Defaults to 5000.
         client_config (dict): Configuration options for the client. Defaults to an empty dictionary.
