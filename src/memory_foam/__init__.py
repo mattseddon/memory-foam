@@ -11,6 +11,7 @@ async def iter_files_async(
     glob: Optional[str] = None,
     modified_after: Optional[datetime] = None,
     max_concurrent_reads: int = 32,
+    max_queued_results: int = 200,
     client_config: dict = {},
     loop=get_loop(),
 ) -> AsyncIterator[File]:
@@ -23,6 +24,8 @@ async def iter_files_async(
         modified_after (Optional[datetime]): A datetime to filter to files modified after. Defaults to None.
         max_concurrent_reads (Optional[int]): The number of files that can be read concurrently.
             Defaults to 32. Set to -1 for unlimited concurrent reads.
+        max_queued_results (Optional[int]): The number of Files in the results queue at any time.
+            Defaults to 200.
         client_config (dict): Configuration options for the client. Defaults to an empty dictionary.
         loop: The event loop to use. Defaults to the default fsspec IO loop.
 
@@ -31,7 +34,12 @@ async def iter_files_async(
     """
     with Client.get_client(uri, loop, max_concurrent_reads, **client_config) as client:
         _, path = client.parse_url(uri)
-        async for file in client.iter_files(path.rstrip("/"), glob, modified_after):
+        async for file in client.iter_files(
+            path.rstrip("/"),
+            glob=glob,
+            modified_after=modified_after,
+            max_queued_results=max_queued_results,
+        ):
             yield file
 
 
@@ -39,6 +47,7 @@ async def iter_pointers_async(
     bucket: str,
     pointers: list[FilePointer],
     max_concurrent_reads: int = 32,
+    max_queued_results: int = 200,
     client_config: dict = {},
     loop=get_loop(),
 ) -> AsyncIterator[File]:
@@ -50,6 +59,8 @@ async def iter_pointers_async(
         pointers (list[FilePointer]): A list of file pointers to iterate over.
         max_concurrent_reads (Optional[int]): The number of files that can be read concurrently.
             Defaults to 32. Set to -1 for unlimited concurrent reads.
+        max_queued_results (Optional[int]): The number of Files in the results queue at any time.
+            Defaults to 200.
         client_config (dict): Configuration options for the client. Defaults to an empty dictionary.
         loop: The event loop to use. Defaults to the default fsspec IO loop.
 
@@ -59,7 +70,7 @@ async def iter_pointers_async(
     with Client.get_client(
         bucket, loop, max_concurrent_reads, **client_config
     ) as client:
-        async for file in client.iter_pointers(pointers):
+        async for file in client.iter_pointers(pointers, max_queued_results):
             yield file
 
 
@@ -68,6 +79,7 @@ def iter_files(
     glob: Optional[str] = None,
     modified_after: Optional[datetime] = None,
     max_concurrent_reads: int = 32,
+    max_queued_results: int = 200,
     client_config: dict = {},
 ) -> Iterator[File]:
     """
@@ -79,6 +91,8 @@ def iter_files(
         modified_after (Optional[datetime]): A datetime to filter to files modified after. Defaults to None.
         max_concurrent_reads (Optional[int]): The number of files that can be read concurrently.
             Defaults to 32. Set to -1 for unlimited concurrent reads.
+        max_queued_results (Optional[int]): The number of Files in the results queue at any time.
+            Defaults to 200.
         client_config (dict): Configuration options for the client. Defaults to an empty dictionary.
 
     Yields:
@@ -90,6 +104,7 @@ def iter_files(
         glob=glob,
         modified_after=modified_after,
         max_concurrent_reads=max_concurrent_reads,
+        max_queued_results=max_queued_results,
         client_config=client_config,
         loop=loop,
     )
@@ -101,6 +116,7 @@ def iter_pointers(
     bucket: str,
     pointers: list[FilePointer],
     max_concurrent_reads: int = 32,
+    max_queued_results: int = 200,
     client_config: dict = {},
 ) -> Iterator[File]:
     """
@@ -111,6 +127,8 @@ def iter_pointers(
         pointers (list[FilePointer]): A list of file pointers to iterate over.
         max_concurrent_reads (Optional[int]): The number of files that can be read concurrently.
             Defaults to 32. Set to -1 for unlimited concurrent reads.
+        max_queued_results (Optional[int]): The number of Files in the results queue at any time.
+            Defaults to 200.
         client_config (dict): Configuration options for the client. Defaults to an empty dictionary.
 
     Yields:
@@ -118,7 +136,7 @@ def iter_pointers(
     """
     loop = get_loop()
     async_iter = iter_pointers_async(
-        bucket, pointers, max_concurrent_reads, client_config, loop
+        bucket, pointers, max_concurrent_reads, max_queued_results, client_config, loop
     )
     for file in sync_iter_async(async_iter, loop):
         yield file

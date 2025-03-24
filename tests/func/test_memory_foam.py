@@ -109,7 +109,10 @@ def match_entries(result, expected):
 
 
 def test_iter_files(client, cloud_type):
-    results = [file for file in iter_files(f"{client.PREFIX}{client.name}")]
+    results = [
+        file
+        for file in iter_files(f"{client.PREFIX}{client.name}", max_queued_results=20)
+    ]
     match_entries(results, ENTRIES)
 
 

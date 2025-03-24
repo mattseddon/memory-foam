@@ -176,10 +176,11 @@ class Client(ABC):
     async def iter_files(
         self,
         start_prefix: str,
+        max_queued_results: int,
         glob: Optional[str] = None,
         modified_after: Optional[datetime] = None,
     ) -> AsyncIterator[File]:
-        result_queue: ResultQueue = Queue(200)
+        result_queue: ResultQueue = Queue(max_queued_results)
         main_task = self._loop.create_task(
             self._fetch_prefix(start_prefix, glob, modified_after, result_queue)
         )
@@ -265,8 +266,10 @@ class Client(ABC):
             tasks.append(task)
         return tasks
 
-    async def iter_pointers(self, pointers: list[FilePointer]) -> AsyncIterator[File]:
-        result_queue: ResultQueue = Queue(200)
+    async def iter_pointers(
+        self, pointers: list[FilePointer], max_queued_results: int
+    ) -> AsyncIterator[File]:
+        result_queue: ResultQueue = Queue(max_queued_results)
         main_task = self._loop.create_task(self._fetch_list(pointers, result_queue))
 
         while (file := await result_queue.get()) is not None:
