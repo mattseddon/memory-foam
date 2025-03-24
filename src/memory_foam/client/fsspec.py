@@ -267,10 +267,12 @@ class Client(ABC):
         return tasks
 
     async def iter_pointers(
-        self, pointers: list[FilePointer], max_queued_results: int
+        self, pointers: list[FilePointer], max_queued_results: int, batch_size: int
     ) -> AsyncIterator[File]:
         result_queue: ResultQueue = Queue(max_queued_results)
-        main_task = self._loop.create_task(self._fetch_list(pointers, result_queue))
+        main_task = self._loop.create_task(
+            self._fetch_list(pointers, batch_size, result_queue)
+        )
 
         while (file := await result_queue.get()) is not None:
             yield file
@@ -278,7 +280,7 @@ class Client(ABC):
         await main_task
 
     async def _fetch_list(
-        self, pointers: list[FilePointer], result_queue: ResultQueue
+        self, pointers: list[FilePointer], batch_size: int, result_queue: ResultQueue
     ) -> None:
         tasks = []
         for i, pointer in enumerate(pointers):
@@ -286,7 +288,7 @@ class Client(ABC):
                 self._concurrent_read_file(pointer), result_queue, self._loop
             )
             tasks.append(task)
-            if i % 5000 == 0:
+            if i % batch_size == 0:
                 await gather(*tasks)
                 tasks = []
 
