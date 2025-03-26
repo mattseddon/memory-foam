@@ -14,7 +14,7 @@ from typing import (
     Union,
 )
 from fsspec.spec import AbstractFileSystem
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs, urlsplit, urlunsplit
 
 
 from ..asyn import queue_task_result
@@ -23,7 +23,7 @@ from ..file import File, FilePointer
 from ..glob import get_glob_match, is_match
 
 
-DELIMITER = "/"  # Path delimiter.
+DELIMITER = "/"
 FETCH_WORKERS = 100
 
 
@@ -91,16 +91,30 @@ class Client(ABC):
     def _get_last_modified(self, d: dict) -> datetime: ...
 
     @classmethod
-    def create_fs(cls, **kwargs) -> "AbstractFileSystem":
+    def _create_fs(cls, **kwargs) -> "AbstractFileSystem":
+        """
+        Overridden in S3 and GCS clients - both call super()
+        """
         kwargs.setdefault("version_aware", True)
         fs = cls.FS_CLASS(**kwargs)
         fs.invalidate_cache()
         return fs
 
+    def _version_path(self, path: str, version_id: Optional[str]) -> str:
+        """
+        Overridden in GCS client
+        """
+        parts = list(urlsplit(path))
+        query = parse_qs(parts[3])
+        if "versionId" in query:
+            raise ValueError("path already includes a version query")
+        parts[3] = f"versionId={version_id}" if version_id else ""
+        return urlunsplit(parts)
+
     @property
     def fs(self) -> AbstractFileSystem:
         if not self._fs:
-            self._fs = self.create_fs(
+            self._fs = self._create_fs(
                 **self._fs_kwargs, asynchronous=True, loop=self._loop
             )
         return self._fs
@@ -153,9 +167,6 @@ class Client(ABC):
         storage_name, rel_path = self.split_url(source)
         return self._get_uri(storage_name), rel_path
 
-    def _get_uri(self, name: str) -> str:
-        return f"{self.PREFIX}{name}"
-
     @classmethod
     def split_url(self, url: str) -> tuple[str, str]:
         fill_path = url[len(self.PREFIX) :]
@@ -163,15 +174,6 @@ class Client(ABC):
         bucket = path_split[0]
         path = path_split[1] if len(path_split) > 1 else ""
         return bucket, path
-
-    def _rel_path(self, path: str) -> str:
-        return self.fs.split_path(path)[1]
-
-    def _get_full_path(self, rel_path: str, version_id: Optional[str] = None) -> str:
-        return self._version_path(f"{self.PREFIX}{self.name}/{rel_path}", version_id)
-
-    def _version_path(cls, path: str, version_id: Optional[str]) -> str:
-        return path
 
     async def iter_files(
         self,
@@ -186,6 +188,19 @@ class Client(ABC):
             self._fetch_prefix(
                 start_prefix, glob, modified_after, max_prefetch_pages, result_queue
             )
+        )
+
+        while (file := await result_queue.get()) is not None:
+            yield file
+
+        await main_task
+
+    async def iter_pointers(
+        self, pointers: list[FilePointer], max_queued_results: int, batch_size: int
+    ) -> AsyncIterator[File]:
+        result_queue: ResultQueue = Queue(max_queued_results)
+        main_task = self._loop.create_task(
+            self._fetch_list(pointers, batch_size=batch_size, result_queue=result_queue)
         )
 
         while (file := await result_queue.get()) is not None:
@@ -221,6 +236,28 @@ class Client(ABC):
                 page_consumer.cancel()
         finally:
             await result_queue.put(None)
+
+    async def _fetch_list(
+        self, pointers: list[FilePointer], batch_size: int, result_queue: ResultQueue
+    ) -> None:
+        """
+        This method is overridden in ClientS3 so that _setup_fs can be called there
+        """
+        if hasattr(self, "_setup_fs"):
+            await self._setup_fs()
+
+        tasks = []
+        for i, pointer in enumerate(pointers):
+            task = queue_task_result(
+                self._concurrent_read_file(pointer), result_queue, self._loop
+            )
+            tasks.append(task)
+            if i % batch_size == 0:
+                await gather(*tasks)
+                tasks = []
+
+        await gather(*tasks)
+        await result_queue.put(None)
 
     async def _process_pages(
         self,
@@ -280,34 +317,16 @@ class Client(ABC):
             tasks.append(task)
         return tasks
 
-    async def iter_pointers(
-        self, pointers: list[FilePointer], max_queued_results: int, batch_size: int
-    ) -> AsyncIterator[File]:
-        result_queue: ResultQueue = Queue(max_queued_results)
-        main_task = self._loop.create_task(
-            self._fetch_list(pointers, batch_size=batch_size, result_queue=result_queue)
-        )
+    async def _concurrent_read_file(self, pointer: FilePointer) -> File:
+        if not self._max_concurrent_reads:
+            return await self._read_file(pointer)
 
-        while (file := await result_queue.get()) is not None:
-            yield file
+        async with self._max_concurrent_reads:
+            return await self._read_file(pointer)
 
-        await main_task
-
-    async def _fetch_list(
-        self, pointers: list[FilePointer], batch_size: int, result_queue: ResultQueue
-    ) -> None:
-        tasks = []
-        for i, pointer in enumerate(pointers):
-            task = queue_task_result(
-                self._concurrent_read_file(pointer), result_queue, self._loop
-            )
-            tasks.append(task)
-            if i % batch_size == 0:
-                await gather(*tasks)
-                tasks = []
-
-        await gather(*tasks)
-        await result_queue.put(None)
+    async def _read_file(self, pointer: FilePointer) -> File:
+        contents = await self._read(pointer.path, pointer.version)
+        return (pointer, contents)
 
     def _should_read(
         self,
@@ -330,13 +349,11 @@ class Client(ABC):
         """
         return not (key.startswith("/") or key.endswith("/") or "//" in key)
 
-    async def _concurrent_read_file(self, pointer: FilePointer) -> File:
-        if not self._max_concurrent_reads:
-            return await self._read_file(pointer)
+    def _get_uri(self, name: str) -> str:
+        return f"{self.PREFIX}{name}"
 
-        async with self._max_concurrent_reads:
-            return await self._read_file(pointer)
+    def _rel_path(self, path: str) -> str:
+        return self.fs.split_path(path)[1]
 
-    async def _read_file(self, pointer: FilePointer) -> File:
-        contents = await self._read(pointer.path, pointer.version)
-        return (pointer, contents)
+    def _get_full_path(self, rel_path: str, version_id: Optional[str] = None) -> str:
+        return self._version_path(f"{self.PREFIX}{self.name}/{rel_path}", version_id)

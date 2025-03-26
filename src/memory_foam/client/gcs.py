@@ -18,35 +18,8 @@ class GCSClient(Client):
     PREFIX = "gs://"
     protocol = "gs"
 
-    @classmethod
-    def create_fs(cls, **kwargs) -> GCSFileSystem:
-        if os.environ.get("MF_GCP_CREDENTIALS"):
-            kwargs["token"] = json.loads(os.environ["MF_GCP_CREDENTIALS"])
-        if kwargs.pop("anon", False):
-            kwargs["token"] = "anon"  # noqa: S105
-
-        return cast(GCSFileSystem, super().create_fs(**kwargs))
-
-    @staticmethod
-    def parse_timestamp(timestamp: str) -> datetime:
-        """
-        Parse timestamp string returned by GCSFileSystem.
-
-        This ensures that the passed timestamp is timezone aware.
-        """
-        dt = isoparse(timestamp)
-        assert dt.tzinfo is not None
-        return dt
-
     def close(self):
         pass
-
-    @property
-    def _path_key(self):
-        return "name"
-
-    def _get_last_modified(self, d: dict):
-        return self.parse_timestamp(d["updated"])
 
     async def _get_pages(self, prefix: str, page_queue: PageQueue) -> None:
         page_size = 5000
@@ -72,16 +45,6 @@ class GCSClient(Client):
         finally:
             await page_queue.put(None)
 
-    def _info_to_file_pointer(self, d: dict[str, Any]) -> FilePointer:
-        info = self.fs._process_object(self.name, d)
-        return FilePointer(
-            source=self._uri,
-            path=self._rel_path(info["name"]),
-            size=info.get("size", ""),
-            version=info.get("generation", ""),
-            last_modified=info.get("mtime", ""),
-        )
-
     @retry_request(retries=6)
     async def _read(self, path: str, version: Optional[str] = None) -> bytes:
         url = self.fs.url(self._get_full_path(path, version))
@@ -104,6 +67,41 @@ class GCSClient(Client):
 
             return byts
 
+    def _info_to_file_pointer(self, d: dict[str, Any]) -> FilePointer:
+        info = self.fs._process_object(self.name, d)
+        return FilePointer(
+            source=self._uri,
+            path=self._rel_path(info["name"]),
+            size=info.get("size", ""),
+            version=info.get("generation", ""),
+            last_modified=info.get("mtime", ""),
+        )
+
+    @property
+    def _path_key(self):
+        return "name"
+
+    def _get_last_modified(self, d: dict):
+        return self._parse_timestamp(d["updated"])
+
     @classmethod
-    def _version_path(cls, path: str, version_id: Optional[str]) -> str:
+    def _create_fs(cls, **kwargs) -> GCSFileSystem:
+        if os.environ.get("MF_GCP_CREDENTIALS"):
+            kwargs["token"] = json.loads(os.environ["MF_GCP_CREDENTIALS"])
+        if kwargs.pop("anon", False):
+            kwargs["token"] = "anon"  # noqa: S105
+
+        return cast(GCSFileSystem, super()._create_fs(**kwargs))
+
+    def _version_path(self, path: str, version_id: Optional[str]) -> str:
         return f"{path}#{version_id}" if version_id else path
+
+    def _parse_timestamp(self, timestamp: str) -> datetime:
+        """
+        Parse timestamp string returned by GCSFileSystem.
+
+        This ensures that the passed timestamp is timezone aware.
+        """
+        dt = isoparse(timestamp)
+        assert dt.tzinfo is not None
+        return dt

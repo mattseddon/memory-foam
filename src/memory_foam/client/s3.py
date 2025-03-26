@@ -4,7 +4,7 @@ from s3fs import S3FileSystem
 from botocore.exceptions import NoCredentialsError
 
 from ..file import FilePointer
-from .fsspec import Client, PageQueue, ResultQueue
+from .fsspec import Client, PageQueue
 
 
 class ClientS3(Client):
@@ -12,8 +12,53 @@ class ClientS3(Client):
     PREFIX = "s3://"
     protocol = "s3"
 
+    def close(self):
+        self.fs.close_session(self._loop, self.s3)
+
+    async def _get_pages(self, prefix, page_queue: PageQueue):
+        try:
+            await self._setup_fs()
+
+            method = "list_object_versions"
+            contents_key = "Versions"
+            pag = self.s3.get_paginator(method)
+            it = pag.paginate(
+                Bucket=self.name,
+                Prefix=prefix,
+                Delimiter="",
+            )
+
+            async for page in it:
+                await page_queue.put(page.get(contents_key, []))
+        finally:
+            await page_queue.put(None)
+
+    async def _read(self, path: str, version: Optional[str] = None) -> bytes:
+        stream = await self.fs.open_async(self._get_full_path(path, version))
+        return await stream.read()
+
+    def _info_to_file_pointer(
+        self,
+        d: dict[str, Any],
+    ) -> FilePointer:
+        version = self._clean_s3_version(d.get("VersionId", ""))
+        return FilePointer(
+            source=self._uri,
+            path=d["Key"],
+            size=d["Size"],
+            version=version,
+            last_modified=d.get("LastModified", ""),
+        )
+
+    @property
+    def _path_key(self):
+        return "Key"
+
+    def _get_last_modified(self, d: dict) -> datetime:
+        return d.get("LastModified", "")
+
     @classmethod
-    def create_fs(cls, **kwargs) -> S3FileSystem:
+    def _create_fs(cls, **kwargs) -> S3FileSystem:
         if "aws_endpoint_url" in kwargs:
             kwargs.setdefault("client_kwargs", {}).setdefault(
                 "endpoint_url", kwargs.pop("aws_endpoint_url")
@@ -38,71 +83,18 @@ class ClientS3(Client):
                 non_async_kwargs = {
                     k: v for k, v in kwargs.items() if k not in ["asynchronous", "loop"]
                 }
-                super().create_fs(**non_async_kwargs).sign("s3://bucket/object")
+                super()._create_fs(**non_async_kwargs).sign("s3://bucket/object")
             except NoCredentialsError:
                 kwargs["anon"] = True
             except NotImplementedError:
                 pass
 
-        return cast(S3FileSystem, super().create_fs(**kwargs))
-
-    def close(self):
-        self.fs.close_session(self._loop, self.s3)
-
-    @property
-    def _path_key(self):
-        return "Key"
-
-    def _get_last_modified(self, d: dict) -> datetime:
-        return d.get("LastModified", "")
-
-    async def _get_pages(self, prefix, page_queue: PageQueue):
-        try:
-            await self._setup_fs()
-
-            method = "list_object_versions"
-            contents_key = "Versions"
-            pag = self.s3.get_paginator(method)
-            it = pag.paginate(
-                Bucket=self.name,
-                Prefix=prefix,
-                Delimiter="",
-            )
-
-            async for page in it:
-                await page_queue.put(page.get(contents_key, []))
-        finally:
-            await page_queue.put(None)
+        return cast(S3FileSystem, super()._create_fs(**kwargs))
 
     async def _setup_fs(self):
         fs = self.fs
         await fs.set_session()
         self.s3 = await fs.get_s3(self.name)
-
-    async def _fetch_list(
-        self, pointers: list[FilePointer], batch_size: int, result_queue: ResultQueue
-    ):
-        await self._setup_fs()
-        return await super()._fetch_list(
-            pointers, batch_size=batch_size, result_queue=result_queue
-        )
-
-    async def _read(self, path: str, version: Optional[str] = None) -> bytes:
-        stream = await self.fs.open_async(self._get_full_path(path, version))
-        return await stream.read()
-
-    def _info_to_file_pointer(
-        self,
-        d: dict[str, Any],
-    ) -> FilePointer:
-        version = self._clean_s3_version(d.get("VersionId", ""))
-        return FilePointer(
-            source=self._uri,
-            path=d["Key"],
-            size=d["Size"],
-            version=version,
-            last_modified=d.get("LastModified", ""),
-        )
 
     def _clean_s3_version(self, ver: Optional[str]) -> str:
         if ver is None or ver == "null":
