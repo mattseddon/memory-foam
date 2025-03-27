@@ -1,3 +1,6 @@
+import random
+
+
 try:
     import os
 
@@ -76,47 +79,55 @@ def _open_image(contents: bytes):
     return Image.open(BytesIO(contents))
 
 
-def similarity_search() -> tuple[list[FilePointer], dict[str, str]]:
-    print("*** Demonstrate vector search against first loaded image ***")
+def similarity_search() -> tuple[list[FilePointer], dict[str, tuple[int, float]]]:
+    print("*** Demonstrate vector search against a loaded image ***")
+    offset = random.randint(0, 199)
     conn = duckdb.connect(db_path)
     conn.load_extension("vss")
     conn.execute("SET hnsw_enable_experimental_persistence = true;")
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx ON img_embeddings USING HNSW (embeddings);"
     )
+    SELECT = f"(select embeddings from img_embeddings limit 1 offset {offset})"
+    DISTANCE = f"array_distance(embeddings, {SELECT})"
     conn.sql(
-        """
+        f"""
         SELECT
             path,
             version,
-            array_distance(embeddings, (select embeddings from img_embeddings limit 1)) as distance
+            {DISTANCE} as distance
         FROM img_embeddings
-        ORDER BY array_distance(embeddings, (select embeddings from img_embeddings limit 1))
+        ORDER BY {DISTANCE}
         LIMIT 3;
         """
     ).show()
 
     pointers = []
-    titles = ["Original", "Nearest", "Next Nearest"]
-    subplot_titles = {}
+    details = {}
     for i, record in enumerate(
         conn.execute(
+            f"""
+            SELECT
+                source,
+                path,
+                size,
+                version,
+                last_modified,
+                {DISTANCE} as distance
+            FROM img_embeddings
+            ORDER BY {DISTANCE}
+            LIMIT 3;
             """
-        SELECT source, path, size, version, last_modified
-        FROM img_embeddings
-        ORDER BY array_distance(embeddings, (select embeddings from img_embeddings limit 1))
-        LIMIT 3;
-        """
         )
         .fetch_df()
         .to_dict(orient="records")
     ):
         pointer = FilePointer.from_dict(record)
         pointers.append(pointer)
-        subplot_titles[pointer.path] = titles[i]
+        details[pointer.path] = (i, record["distance"])
 
     conn.close()
-    return pointers, subplot_titles
+    return pointers, details
 
 
 def setup_plot():
@@ -142,17 +153,24 @@ with tqdm(desc="Processing embeddings", unit=" files") as pbar:
 
     _write_buffer(buffer)
 
-pointers, subplot_titles = similarity_search()
-source = pointers[0].source
-axarr = setup_plot()
+for _ in range(5):
+    pointers, details = similarity_search()
+    source = pointers[0].source
+    axarr = setup_plot()
+    titles = ["Original", "Nearest", "Next Nearest"]
 
-with tqdm(desc="Plotting images", unit=" files", total=3) as pbar:
-    for i, (pointer, contents) in enumerate(
-        iter_pointers(source, pointers=pointers, client_config={"anon": True})
-    ):
-        axarr[i].imshow(_open_image(contents))
-        axarr[i].set_title(subplot_titles[pointer.path])
-        axarr[i].axis("off")
-        pbar.update()
+    with tqdm(desc="Plotting images", unit=" files", total=3) as pbar:
+        for pointer, contents in iter_pointers(
+            source, pointers=pointers, client_config={"anon": True}
+        ):
+            order, distance = details[pointer.path]
+            axarr[order].imshow(_open_image(contents))
+            axarr[order].set_title(
+                f"{titles[order]}\ndistance: {round(distance, 3)}\n{pointer.path}",
+                fontsize=8,
+            )
+            axarr[order].axis("off")
+            pbar.update()
 
-plt.show()
+    plt.show()
+    print()
