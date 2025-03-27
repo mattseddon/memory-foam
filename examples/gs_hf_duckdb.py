@@ -153,24 +153,23 @@ with tqdm(desc="Processing embeddings", unit=" files") as pbar:
 
     _write_buffer(buffer)
 
-for _ in range(5):
-    pointers, details = similarity_search()
-    source = pointers[0].source
-    axarr = setup_plot()
-    titles = ["Original", "Nearest", "Next Nearest"]
 
-    with tqdm(desc="Plotting images", unit=" files", total=3) as pbar:
-        for pointer, contents in iter_pointers(
-            source, pointers=pointers, client_config={"anon": True}
-        ):
-            order, distance = details[pointer.path]
-            axarr[order].imshow(_open_image(contents))
-            axarr[order].set_title(
-                f"{titles[order]}\ndistance: {round(distance, 3)}\n{pointer.path}",
-                fontsize=8,
-            )
-            axarr[order].axis("off")
-            pbar.update()
+pointers, details = similarity_search()
+source = pointers[0].source
+axarr = setup_plot()
+titles = ["Original", "Nearest", "Next Nearest"]
 
-    plt.show()
-    print()
+with tqdm(desc="Plotting images", unit=" files", total=3) as pbar:
+    for pointer, contents in iter_pointers(
+        source, pointers=pointers, client_config={"anon": True}
+    ):
+        order, distance = details[pointer.path]
+        axarr[order].imshow(_open_image(contents))
+        axarr[order].set_title(
+            f"{titles[order]}\ndistance: {round(distance, 3)}\n{pointer.path}",
+            fontsize=8,
+        )
+        axarr[order].axis("off")
+        pbar.update()
+
+plt.show()
