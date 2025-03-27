@@ -3,6 +3,7 @@ from typing import Any
 import pytest
 import attrs
 from upath.implementations.cloud import CloudPath
+from fsspec.asyn import get_loop
 
 
 class CommaSeparatedArgs(_AppendAction):
@@ -142,3 +143,10 @@ def cloud_server(request, tmp_upath_factory, cloud_type, version_aware, tree):
     else:
         src_path = tmp_upath_factory.mktemp(cloud_type, version_aware=version_aware)
     return make_cloud_server(src_path, cloud_type, tree)
+
+
+@pytest.fixture()
+def loop(mocker):
+    loop = get_loop()
+    mocker.patch("memory_foam.asyn.get_loop", return_value=loop)
+    yield loop

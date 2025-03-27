@@ -2,7 +2,6 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 import pytest
 from memory_foam import iter_files, iter_pointers
-from memory_foam.asyn import get_loop
 from memory_foam.client import Client
 from memory_foam.file import FilePointer
 
@@ -90,8 +89,9 @@ def suppress_client_gc_errors(mocker):
 
 
 @pytest.fixture
-def client(cloud_server, cloud_server_credentials, mocker, suppress_client_gc_errors):
-    loop = get_loop()
+def client(
+    cloud_server, cloud_server_credentials, mocker, suppress_client_gc_errors, loop
+):
     with Client.get_client(
         cloud_server.src_uri, loop, 32, **cloud_server.client_config
     ) as client:
@@ -108,7 +108,7 @@ def match_entries(result, expected):
     assert normalize_entries(result) == normalize_entries(expected)
 
 
-def test_iter_files(client, cloud_type):
+def test_iter_files(client):
     results = [
         file
         for file in iter_files(f"{client.PREFIX}{client.name}", max_queued_results=20)
@@ -116,7 +116,7 @@ def test_iter_files(client, cloud_type):
     match_entries(results, ENTRIES)
 
 
-def test_iter_files_glob(client, cloud_type):
+def test_iter_files_glob(client):
     results = [
         file for file in iter_files(f"{client.PREFIX}{client.name}", glob="**/*.jpeg")
     ]
@@ -141,7 +141,7 @@ def _update_after_fixture_cutoff(cutoff: Optional[datetime]) -> datetime:
     ("cutoff", "num_results"),
     [_get_before_fixture_cutoff(7), AFTER_FIXTURE_CUTOFF],
 )
-def test_iter_files_modified_after(client, cloud_type, cutoff, num_results):
+def test_iter_files_modified_after(client, cutoff, num_results):
     cutoff = _update_after_fixture_cutoff(cutoff)
     results = [
         file
@@ -154,7 +154,7 @@ def test_iter_files_modified_after(client, cloud_type, cutoff, num_results):
     ("cutoff", "num_results"),
     [_get_before_fixture_cutoff(2), AFTER_FIXTURE_CUTOFF],
 )
-def test_iter_files_glob_modified_after(client, cloud_type, cutoff, num_results):
+def test_iter_files_glob_modified_after(client, cutoff, num_results):
     cutoff = _update_after_fixture_cutoff(cutoff)
     results = [
         file
@@ -167,7 +167,25 @@ def test_iter_files_glob_modified_after(client, cloud_type, cutoff, num_results)
         assert {res[0].path for res in results} == {"trees/oak.jpeg", "trees/pine.jpeg"}
 
 
-def test_iter_pointers(client, cloud_type):
+def test_iter_files_tune_params(cloud_server, mocker, loop):
+    max_concurrent_reads = -1
+    with Client.get_client(
+        cloud_server.src_uri, loop, max_concurrent_reads, **cloud_server.client_config
+    ) as client:
+        mocker.patch("memory_foam.client.Client.get_client", return_value=client)
+        results = [
+            file
+            for file in iter_files(
+                f"{client.PREFIX}{client.name}",
+                max_concurrent_reads=max_concurrent_reads,
+                max_queued_results=2000,
+                max_prefetch_pages=100,
+            )
+        ]
+        match_entries(results, ENTRIES)
+
+
+def test_iter_pointers(client):
     pointers = []
     for entry in ENTRIES:
         pointers.append(FilePointer.from_dict(entry[0].to_dict_with({"version": ""})))
