@@ -47,7 +47,6 @@ DEFAULT_TREE: dict[str, Any] = {
         "others": {"book4.txt": b"my friend once created a nested directory"},
     },
 }
-NUM_TREE = {f"{i:06d}": f"{i}" for i in range(1024)}
 
 
 def instantiate_tree(path, tree):
@@ -61,13 +60,6 @@ def instantiate_tree(path, tree):
             instantiate_tree(path / key, value)
         else:
             raise TypeError(f"{value=}")
-
-
-@pytest.fixture
-def tmp_dir(tmp_path_factory, monkeypatch):
-    dpath = tmp_path_factory.mktemp("memory_foam-test")
-    monkeypatch.chdir(dpath)
-    return dpath
 
 
 @pytest.fixture(scope="session", params=[DEFAULT_TREE])
