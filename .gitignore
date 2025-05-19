@@ -170,5 +170,5 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
-yolo11m.pt
+yolo11n.pt
 *.duckdb
