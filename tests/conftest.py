@@ -1,3 +1,4 @@
+import os
 from argparse import _AppendAction
 from typing import Any
 
@@ -5,6 +6,8 @@ import attrs
 import pytest
 from fsspec.asyn import get_loop
 from upath.implementations.cloud import CloudPath
+
+os.environ.setdefault("GCSFS_EXPERIMENTAL_ZB_HNS_SUPPORT", "false")
 
 
 class CommaSeparatedArgs(_AppendAction):
