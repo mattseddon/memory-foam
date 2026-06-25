@@ -10,14 +10,14 @@ license = {text = "Apache-2.0"}
 authors = [{name = "Matt Seddon", email = "mattseddon@hotmail.com"}]
 classifiers = [
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
-  "Development Status :: 2 - Pre-Alpha"
+  "Programming Language :: Python :: 3.14",
+  "Development Status :: 5 - Production/Stable"
 ]
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dynamic = ["version"]
 dependencies = [
   "fsspec>=2024.2.0",
@@ -34,16 +34,18 @@ tests = [
   "pytest-cov>=4.1.0",
   "pytest-mock>=3.12.0",
   "pytest-servers[all]>=0.5.9",
-  "hypothesis"
+  "hypothesis",
+  "adlfs<=2025.8.0"
 ]
 dev = [
   "memory_foam[tests]",
-  "mypy==1.15.0",
+  "mypy==2.1.0",
   "types-python-dateutil"
 ]
 examples = [
   "dlt[duckdb]",
-  "huggingface_hub[hf_transfer]",
+  "huggingface_hub",
+  "pandas",
   "matplotlib",
   "open_clip_torch",
   "pillow",

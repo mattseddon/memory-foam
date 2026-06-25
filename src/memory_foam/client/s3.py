@@ -1,7 +1,8 @@
 from datetime import datetime
-from typing import Any, Optional, cast
-from s3fs import S3FileSystem
+from typing import Any, cast
+
 from botocore.exceptions import NoCredentialsError
+from s3fs import S3FileSystem
 
 from ..file import FilePointer
 from .fsspec import Client, PageQueue
@@ -33,7 +34,7 @@ class ClientS3(Client):
         finally:
             await page_queue.put(None)
 
-    async def _read(self, path: str, version: Optional[str] = None) -> bytes:
+    async def _read(self, path: str, version: str | None = None) -> bytes:
         stream = await self.fs.open_async(self._get_full_path(path, version))
         return await stream.read()
 
@@ -96,7 +97,7 @@ class ClientS3(Client):
         await fs.set_session()
         self.s3 = await fs.get_s3(self.name)
 
-    def _clean_s3_version(self, ver: Optional[str]) -> str:
+    def _clean_s3_version(self, ver: str | None) -> str:
         if ver is None or ver == "null":
             return ""
         return ver

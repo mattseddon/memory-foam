@@ -1,9 +1,10 @@
 from argparse import _AppendAction
 from typing import Any
-import pytest
+
 import attrs
-from upath.implementations.cloud import CloudPath
+import pytest
 from fsspec.asyn import get_loop
+from upath.implementations.cloud import CloudPath
 
 
 class CommaSeparatedArgs(_AppendAction):
@@ -132,6 +133,8 @@ def cloud_server_credentials(cloud_server, monkeypatch):
 def cloud_server(request, tmp_upath_factory, cloud_type, version_aware, tree):
     if cloud_type == "azure" and version_aware:
         pytest.skip("Can't test versioning with Azure")
+    elif cloud_type == "azure":
+        pytest.skip("Azure tests are currently disabled as pytest-servers is broken")
     else:
         src_path = tmp_upath_factory.mktemp(cloud_type, version_aware=version_aware)
     return make_cloud_server(src_path, cloud_type, tree)

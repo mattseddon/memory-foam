@@ -1,10 +1,10 @@
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+
 import pytest
+
 from memory_foam import iter_files, iter_pointers
 from memory_foam.client import Client
 from memory_foam.file import FilePointer
-
 from tests.conftest import DEFAULT_TREE
 
 utc = timezone.utc
@@ -86,6 +86,7 @@ ENTRIES = [
 @pytest.fixture
 def suppress_client_gc_errors(mocker):
     mocker.patch("weakref.finalize", return_value=None)
+    mocker.patch("aiobotocore.httpsession.AIOHTTPSession.__aexit__", return_value=None)
 
 
 @pytest.fixture
@@ -131,7 +132,7 @@ def _get_before_fixture_cutoff(num_results) -> tuple[datetime, int]:
 AFTER_FIXTURE_CUTOFF = (None, 0)
 
 
-def _update_after_fixture_cutoff(cutoff: Optional[datetime]) -> datetime:
+def _update_after_fixture_cutoff(cutoff: datetime | None) -> datetime:
     if not cutoff:
         return datetime.now(utc)
     return cutoff
@@ -167,7 +168,7 @@ def test_iter_files_glob_modified_after(client, cutoff, num_results):
         assert {res[0].path for res in results} == {"trees/oak.jpeg", "trees/pine.jpeg"}
 
 
-def test_iter_files_tune_params(cloud_server, mocker, loop):
+def test_iter_files_tune_params(cloud_server, mocker, loop, suppress_client_gc_errors):
     max_concurrent_reads = -1
     with Client.get_client(
         cloud_server.src_uri, loop, max_concurrent_reads, **cloud_server.client_config

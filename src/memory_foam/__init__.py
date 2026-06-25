@@ -1,20 +1,21 @@
+from asyncio import AbstractEventLoop
+from collections.abc import AsyncIterator, Iterator
 from datetime import datetime
-from typing import AsyncIterator, Iterator, Optional
-from .client import Client
 
+from .asyn import get_loop, sync_iter_async
+from .client import Client
 from .file import File, FilePointer
-from .asyn import sync_iter_async, get_loop
 
 
 async def iter_files_async(
     uri: str,
-    glob: Optional[str] = None,
-    modified_after: Optional[datetime] = None,
+    glob: str | None = None,
+    modified_after: datetime | None = None,
     max_concurrent_reads: int = 32,
     max_queued_results: int = 200,
     max_prefetch_pages: int = 2,
-    client_config: dict = {},
-    loop=get_loop(),
+    client_config: dict | None = None,
+    loop: AbstractEventLoop | None = None,
 ) -> AsyncIterator[File]:
     """
     Asynchronously iterate over files in a given URI.
@@ -35,6 +36,13 @@ async def iter_files_async(
     Yields:
         File: A tuple containing a FilePointer to each file along with the file's contents.
     """
+
+    if client_config is None:
+        client_config = {}
+
+    if loop is None:
+        loop = get_loop()
+
     with Client.get_client(uri, loop, max_concurrent_reads, **client_config) as client:
         _, path = client.parse_url(uri)
         async for file in client.iter_files(
@@ -53,8 +61,8 @@ async def iter_pointers_async(
     max_concurrent_reads: int = 32,
     max_queued_results: int = 200,
     batch_size: int = 5000,
-    client_config: dict = {},
-    loop=get_loop(),
+    client_config: dict | None = None,
+    loop: AbstractEventLoop | None = None,
 ) -> AsyncIterator[File]:
     """
     Asynchronously iterate over files using a list of file pointers.
@@ -73,6 +81,12 @@ async def iter_pointers_async(
     Yields:
         File: A tuple containing a FilePointer to each file along with the file's contents.
     """
+    if client_config is None:
+        client_config = {}
+
+    if loop is None:
+        loop = get_loop()
+
     with Client.get_client(
         bucket, loop, max_concurrent_reads, **client_config
     ) as client:
@@ -84,12 +98,12 @@ async def iter_pointers_async(
 
 def iter_files(
     uri: str,
-    glob: Optional[str] = None,
-    modified_after: Optional[datetime] = None,
+    glob: str | None = None,
+    modified_after: datetime | None = None,
     max_concurrent_reads: int = 32,
     max_queued_results: int = 200,
     max_prefetch_pages: int = 2,
-    client_config: dict = {},
+    client_config: dict | None = None,
 ) -> Iterator[File]:
     """
     Synchronously iterate over files in a given URI.
@@ -110,6 +124,8 @@ def iter_files(
         File: A tuple containing a FilePointer to each file along with the file's contents.
     """
     loop = get_loop()
+    if client_config is None:
+        client_config = {}
     async_iter = iter_files_async(
         uri,
         glob=glob,
@@ -120,8 +136,7 @@ def iter_files(
         client_config=client_config,
         loop=loop,
     )
-    for file in sync_iter_async(async_iter, loop):
-        yield file
+    yield from sync_iter_async(async_iter, loop)
 
 
 def iter_pointers(
@@ -130,7 +145,7 @@ def iter_pointers(
     max_concurrent_reads: int = 32,
     max_queued_results: int = 200,
     batch_size: int = 5000,
-    client_config: dict = {},
+    client_config: dict | None = None,
 ) -> Iterator[File]:
     """
     Synchronously iterate over files using a list of file pointers.
@@ -149,6 +164,8 @@ def iter_pointers(
         File: A tuple containing a FilePointer to each file along with the file's contents.
     """
     loop = get_loop()
+    if client_config is None:
+        client_config = {}
     async_iter = iter_pointers_async(
         bucket,
         pointers=pointers,
@@ -158,15 +175,14 @@ def iter_pointers(
         client_config=client_config,
         loop=loop,
     )
-    for file in sync_iter_async(async_iter, loop):
-        yield file
+    yield from sync_iter_async(async_iter, loop)
 
 
 __all__ = [
     "File",
     "FilePointer",
-    "iter_files_async",
     "iter_files",
-    "iter_pointers_async",
+    "iter_files_async",
     "iter_pointers",
+    "iter_pointers_async",
 ]

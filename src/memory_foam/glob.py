@@ -1,11 +1,11 @@
 import re
+from collections.abc import Callable
 from fnmatch import translate
-from typing import Callable, Optional
 
 
 def get_glob_match(
-    glob: Optional[str],
-) -> Optional[Callable]:
+    glob: str | None,
+) -> Callable | None:
     if glob:
         res = translate(glob)
         return re.compile(res).match
@@ -13,7 +13,7 @@ def get_glob_match(
     return None
 
 
-def is_match(path: str, glob_match: Optional[Callable]) -> bool:
+def is_match(path: str, glob_match: Callable | None) -> bool:
     if not glob_match:
         return True
 

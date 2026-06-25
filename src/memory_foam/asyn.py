@@ -1,27 +1,28 @@
 from asyncio import (
     AbstractEventLoop,
-    ensure_future,
     Queue,
-    run_coroutine_threadsafe,
     Task,
+    ensure_future,
+    run_coroutine_threadsafe,
 )
+from collections.abc import AsyncIterable, Awaitable, Iterator
+from typing import TypeVar
 
-from fsspec.asyn import get_loop
-from typing import AsyncIterable, Awaitable, Iterator, TypeVar
+from fsspec.asyn import get_loop  # noqa: F401
 
 T = TypeVar("T")
 
 
-async def queue_task_result(coro: Awaitable[T], queue: Queue, loop=get_loop()) -> Task:
+async def queue_task_result(
+    coro: Awaitable[T], queue: Queue, loop: AbstractEventLoop
+) -> Task:
     task = ensure_future(coro, loop=loop)
     result = await task
     await queue.put(result)
     return task
 
 
-def sync_iter_async(
-    ait: AsyncIterable[T], loop: AbstractEventLoop = get_loop()
-) -> Iterator[T]:
+def sync_iter_async(ait: AsyncIterable[T], loop: AbstractEventLoop) -> Iterator[T]:
     """Wrap an asynchronous iterator into a synchronous one"""
 
     ait = ait.__aiter__()

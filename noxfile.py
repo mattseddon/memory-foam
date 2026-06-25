@@ -22,7 +22,7 @@ def build(session: nox.Session) -> None:
 def tests(session: nox.Session) -> None:
     session.install(".[tests]")
     env = {"COVERAGE_FILE": f".coverage.{session.python}"}
-    if session.python in ("3.12", "3.13"):
+    if session.python in ("3.13", "3.14"):
         env["COVERAGE_CORE"] = "sysmon"
     session.run(
         "pytest",

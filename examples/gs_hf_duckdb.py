@@ -1,21 +1,21 @@
 import random
 
-
 try:
     import os
 
     from matplotlib import pyplot as plt
 
-    os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
-
-    from huggingface_hub import hf_hub_download
-    import open_clip
+    os.environ["HF_XET_HIGH_PERFORMANCE"] = "1"
 
     from io import BytesIO
-    from memory_foam import FilePointer, iter_files, iter_pointers
+
+    import duckdb
+    import open_clip
+    from huggingface_hub import hf_hub_download
     from PIL import Image
     from tqdm.auto import tqdm
-    import duckdb
+
+    from memory_foam import FilePointer, iter_files, iter_pointers
 except ImportError:
     print(
         "There are missing dependencies, install the memory-foam package with the [examples] optional extras."

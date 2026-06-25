@@ -1,36 +1,28 @@
-from abc import ABC, abstractmethod
-from asyncio import AbstractEventLoop, Queue, Semaphore, gather
-from datetime import datetime
 import multiprocessing
 import os
+from abc import ABC, abstractmethod
+from asyncio import AbstractEventLoop, Queue, Semaphore, gather
+from collections.abc import AsyncIterable, AsyncIterator, Callable, Iterable
+from datetime import datetime
 from typing import (
     Any,
-    AsyncIterable,
-    AsyncIterator,
-    Callable,
     ClassVar,
-    Iterable,
-    Optional,
-    Union,
 )
-from fsspec.spec import AbstractFileSystem
-from urllib.parse import urlparse, parse_qs, urlsplit, urlunsplit
+from urllib.parse import parse_qs, urlparse, urlsplit, urlunsplit
 
+from fsspec.spec import AbstractFileSystem
 
 from ..asyn import queue_task_result
 from ..dttime import is_modified_after
 from ..file import File, FilePointer
 from ..glob import get_glob_match, is_match
 
-
 DELIMITER = "/"
 FETCH_WORKERS = 100
 
 
-ResultQueue = Queue[Optional[File]]
-PageQueue = Queue[
-    Optional[Union[Iterable[dict[str, Any]], AsyncIterable[dict[str, Any]]]]
-]
+ResultQueue = Queue[File | None]
+PageQueue = Queue[Iterable[dict[str, Any]] | AsyncIterable[dict[str, Any]] | None]
 
 
 class ClientError(RuntimeError):
@@ -56,7 +48,7 @@ class Client(ABC):
     ) -> None:
         self.name = name
         self._fs_kwargs = fs_kwargs
-        self._fs: Optional[AbstractFileSystem] = None
+        self._fs: AbstractFileSystem | None = None
         self._uri = self._get_uri(self.name)
         self._loop = loop
 
@@ -78,10 +70,10 @@ class Client(ABC):
     async def _get_pages(self, prefix: str, page_queue: PageQueue) -> None: ...
 
     @abstractmethod
-    async def _read(self, path: str, version: Optional[str] = None) -> bytes: ...
+    async def _read(self, path: str, version: str | None = None) -> bytes: ...
 
     @abstractmethod
-    def _info_to_file_pointer(self, v: dict[str, Any]) -> FilePointer: ...
+    def _info_to_file_pointer(self, d: dict[str, Any]) -> FilePointer: ...
 
     @property
     @abstractmethod
@@ -100,7 +92,7 @@ class Client(ABC):
         fs.invalidate_cache()
         return fs
 
-    def _version_path(self, path: str, version_id: Optional[str]) -> str:
+    def _version_path(self, path: str, version_id: str | None) -> str:
         """
         Overridden in GCS client
         """
@@ -180,8 +172,8 @@ class Client(ABC):
         start_prefix: str,
         max_queued_results: int,
         max_prefetch_pages: int,
-        glob: Optional[str] = None,
-        modified_after: Optional[datetime] = None,
+        glob: str | None = None,
+        modified_after: datetime | None = None,
     ) -> AsyncIterator[File]:
         result_queue: ResultQueue = Queue(max_queued_results)
         main_task = self._loop.create_task(
@@ -211,8 +203,8 @@ class Client(ABC):
     async def _fetch_prefix(
         self,
         start_prefix: str,
-        glob: Optional[str],
-        modified_after: Optional[datetime],
+        glob: str | None,
+        modified_after: datetime | None,
         max_prefetch_pages: int,
         result_queue: ResultQueue,
     ) -> None:
@@ -263,8 +255,8 @@ class Client(ABC):
         self,
         prefix: str,
         page_queue: PageQueue,
-        glob: Optional[str],
-        modified_after: Optional[datetime],
+        glob: str | None,
+        modified_after: datetime | None,
         result_queue: ResultQueue,
     ):
         glob_match = get_glob_match(glob)
@@ -302,8 +294,8 @@ class Client(ABC):
     def _process_page(
         self,
         page: Iterable,
-        glob_match: Optional[Callable],
-        modified_after: Optional[datetime],
+        glob_match: Callable | None,
+        modified_after: datetime | None,
         result_queue: ResultQueue,
     ):
         tasks = []
@@ -331,8 +323,8 @@ class Client(ABC):
     def _should_read(
         self,
         d: dict,
-        glob_match: Optional[Callable],
-        modified_after: Optional[datetime],
+        glob_match: Callable | None,
+        modified_after: datetime | None,
     ) -> bool:
         return (
             self._is_valid_key(d[self._path_key])
@@ -355,5 +347,5 @@ class Client(ABC):
     def _rel_path(self, path: str) -> str:
         return self.fs.split_path(path)[1]
 
-    def _get_full_path(self, rel_path: str, version_id: Optional[str] = None) -> str:
+    def _get_full_path(self, rel_path: str, version_id: str | None = None) -> str:
         return self._version_path(f"{self.PREFIX}{self.name}/{rel_path}", version_id)

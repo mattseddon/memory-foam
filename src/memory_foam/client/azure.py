@@ -1,18 +1,20 @@
-from asyncio import Queue
-from datetime import datetime
-import os
 import errno
-from typing import Any, AsyncIterable, Callable, Optional
+import os
+from asyncio import Queue
+from collections.abc import AsyncIterable, Callable
+from datetime import datetime
+from typing import Any
+
 from adlfs import AzureBlobFileSystem
 from azure.core.exceptions import (
     ResourceNotFoundError,
 )
 
-from .fsspec import Client, ResultQueue
 from ..asyn import queue_task_result
 from ..file import FilePointer
+from .fsspec import Client, ResultQueue
 
-PageQueue = Queue[Optional[AsyncIterable[dict[str, Any]]]]
+PageQueue = Queue[AsyncIterable[dict[str, Any]] | None]
 
 
 class AzureClient(Client):
@@ -35,7 +37,7 @@ class AzureClient(Client):
         finally:
             await page_queue.put(None)
 
-    async def _read(self, path: str, version: Optional[str] = None) -> bytes:
+    async def _read(self, path: str, version: str | None = None) -> bytes:
         full_path = self._get_full_path(path, version)
         delimiter = "/"
         source, path, version = self.fs.split_path(full_path, delimiter=delimiter)
@@ -74,8 +76,8 @@ class AzureClient(Client):
     async def _process_page_async(
         self,
         page: AsyncIterable,
-        glob_match: Optional[Callable],
-        modified_after: Optional[datetime],
+        glob_match: Callable | None,
+        modified_after: datetime | None,
         result_queue: ResultQueue,
     ):
         tasks = []

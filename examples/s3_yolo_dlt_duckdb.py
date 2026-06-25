@@ -4,11 +4,13 @@ try:
     os.environ["YOLO_VERBOSE"] = "false"
 
     from io import BytesIO
-    from memory_foam import iter_files, FilePointer
-    from PIL import Image
-    from ultralytics import YOLO
-    from tqdm.auto import tqdm
+
     import dlt
+    from PIL import Image
+    from tqdm.auto import tqdm
+    from ultralytics import YOLO
+
+    from memory_foam import FilePointer, iter_files
 
 except ImportError:
     print(

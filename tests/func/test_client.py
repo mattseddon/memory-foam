@@ -1,7 +1,7 @@
-from memory_foam.client import Client
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
+from memory_foam.client import Client
 
 _non_null_text = st.text(
     alphabet=st.characters(blacklist_categories=["Cc", "Cs"]), min_size=1
