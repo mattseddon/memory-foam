@@ -13,12 +13,22 @@ class ClientS3(Client):
     PREFIX = "s3://"
     protocol = "s3"
 
+    @property
+    def fs(self) -> S3FileSystem:
+        if not self._fs:
+            self._fs = self._create_s3_fs(
+                **self._fs_kwargs, asynchronous=True, loop=self._loop
+            )
+        return cast(S3FileSystem, self._fs)
+
     def close(self):
         self.fs.close_session(self._loop, self.s3)
 
     async def _get_pages(self, prefix, page_queue: PageQueue):
         try:
             await self._setup_fs()
+
+            assert self.s3
 
             method = "list_object_versions"
             contents_key = "Versions"
@@ -29,7 +39,7 @@ class ClientS3(Client):
                 Delimiter="",
             )
 
-            async for page in it:
+            async for page in it:  # pyright: ignore[reportGeneralTypeIssues]
                 await page_queue.put(page.get(contents_key, []))
         finally:
             await page_queue.put(None)
@@ -59,7 +69,7 @@ class ClientS3(Client):
         return d.get("LastModified", "")
 
     @classmethod
-    def _create_fs(cls, **kwargs) -> S3FileSystem:
+    def _create_s3_fs(cls, **kwargs) -> S3FileSystem:
         if "aws_endpoint_url" in kwargs:
             kwargs.setdefault("client_kwargs", {}).setdefault(
                 "endpoint_url", kwargs.pop("aws_endpoint_url")
@@ -84,7 +94,7 @@ class ClientS3(Client):
                 non_async_kwargs = {
                     k: v for k, v in kwargs.items() if k not in ["asynchronous", "loop"]
                 }
-                super()._create_fs(**non_async_kwargs).sign("s3://bucket/object")
+                cls._create_fs(**non_async_kwargs).sign("s3://bucket/object")
             except NoCredentialsError:
                 kwargs["anon"] = True
             except NotImplementedError:

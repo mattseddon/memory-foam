@@ -4,20 +4,31 @@ from datetime import datetime
 from typing import Any, cast
 
 from dateutil.parser import isoparse
-from gcsfs import GCSFileSystem
+from gcsfs import GCSFileSystem as _GCSFileSystem
 from gcsfs.retry import retry_request
 
 from ..file import FilePointer
 from .fsspec import Client, PageQueue
 
+
 # Patch gcsfs for consistency with s3fs
-GCSFileSystem.set_session = GCSFileSystem._set_session
+class GCSFileSystem(_GCSFileSystem):
+    def set_session(self):
+        return self._set_session()
 
 
 class GCSClient(Client):
     FS_CLASS = GCSFileSystem
     PREFIX = "gs://"
     protocol = "gs"
+
+    @property
+    def fs(self) -> GCSFileSystem:
+        if not self._fs:
+            self._fs = self._create_gcs_fs(
+                **self._fs_kwargs, asynchronous=True, loop=self._loop
+            )
+        return cast(GCSFileSystem, self._fs)
 
     def close(self):
         pass
@@ -38,18 +49,19 @@ class GCSClient(Client):
                     json_out=True,
                     versions="true",
                 )
-                assert page["kind"] == "storage#objects"
-                await page_queue.put(page.get("items", []))
-                next_page_token = page.get("nextPageToken")
+                assert page["kind"] == "storage#objects"  # pyright: ignore[reportCallIssue, reportArgumentType]
+                await page_queue.put(page.get("items", []))  # pyright: ignore[reportAttributeAccessIssue]
+                next_page_token = page.get("nextPageToken")  # pyright: ignore[reportAttributeAccessIssue]
                 if next_page_token is None:
                     break
         finally:
             await page_queue.put(None)
 
-    @retry_request(retries=6)
+    @retry_request
     async def _read(self, path: str, version: str | None = None) -> bytes:
         url = self.fs.url(self._get_full_path(path, version))
-        await self.fs._set_session()
+        await self.fs.set_session()
+        assert self.fs.session
         async with self.fs.session.get(
             url=url,
             params=self.fs._get_params({}),
@@ -86,13 +98,13 @@ class GCSClient(Client):
         return self._parse_timestamp(d["updated"])
 
     @classmethod
-    def _create_fs(cls, **kwargs) -> GCSFileSystem:
+    def _create_gcs_fs(cls, **kwargs) -> GCSFileSystem:
         if os.environ.get("MF_GCP_CREDENTIALS"):
             kwargs["token"] = json.loads(os.environ["MF_GCP_CREDENTIALS"])
         if kwargs.pop("anon", False):
             kwargs["token"] = "anon"
 
-        return cast(GCSFileSystem, super()._create_fs(**kwargs))
+        return cast(GCSFileSystem, cls._create_fs(**kwargs))
 
     def _version_path(self, path: str, version_id: str | None) -> str:
         return f"{path}#{version_id}" if version_id else path

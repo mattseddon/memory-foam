@@ -38,4 +38,4 @@ def sync_iter_async(ait: AsyncIterable[T], loop: AbstractEventLoop) -> Iterator[
         done, obj = run_coroutine_threadsafe(get_next(), loop).result()
         if done:
             break
-        yield obj
+        yield obj  # pyright: ignore[reportReturnType]

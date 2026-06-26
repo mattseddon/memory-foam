@@ -3,7 +3,7 @@ import os
 from asyncio import Queue
 from collections.abc import AsyncIterable, Callable
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
 from adlfs import AzureBlobFileSystem
 from azure.core.exceptions import (
@@ -22,6 +22,14 @@ class AzureClient(Client):
     PREFIX = "az://"
     protocol = "az"
 
+    @property
+    def fs(self) -> AzureBlobFileSystem:
+        if not self._fs:
+            self._fs = self._create_fs(
+                **self._fs_kwargs, asynchronous=True, loop=self._loop
+            )
+        return cast(AzureBlobFileSystem, self._fs)
+
     def close(self):
         pass
 
@@ -33,7 +41,7 @@ class AzureClient(Client):
                 async for page in container_client.list_blobs(
                     include=["metadata", "versions"], name_starts_with=prefix
                 ).by_page():
-                    await page_queue.put(page)
+                    await page_queue.put(page)  # pyright: ignore[reportArgumentType]
         finally:
             await page_queue.put(None)
 

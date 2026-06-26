@@ -4,10 +4,7 @@ from abc import ABC, abstractmethod
 from asyncio import AbstractEventLoop, Queue, Semaphore, gather
 from collections.abc import AsyncIterable, AsyncIterator, Callable, Iterable
 from datetime import datetime
-from typing import (
-    Any,
-    ClassVar,
-)
+from typing import Any, ClassVar
 from urllib.parse import parse_qs, urlparse, urlsplit, urlunsplit
 
 from fsspec.spec import AbstractFileSystem
@@ -84,9 +81,6 @@ class Client(ABC):
 
     @classmethod
     def _create_fs(cls, **kwargs) -> "AbstractFileSystem":
-        """
-        Overridden in S3 and GCS clients - both call super()
-        """
         kwargs.setdefault("version_aware", True)
         fs = cls.FS_CLASS(**kwargs)
         fs.invalidate_cache()
@@ -104,12 +98,9 @@ class Client(ABC):
         return urlunsplit(parts)
 
     @property
+    @abstractmethod
     def fs(self) -> AbstractFileSystem:
-        if not self._fs:
-            self._fs = self._create_fs(
-                **self._fs_kwargs, asynchronous=True, loop=self._loop
-            )
-        return self._fs
+        pass
 
     @staticmethod
     def get_implementation(url: str) -> type["Client"]:
@@ -160,8 +151,8 @@ class Client(ABC):
         return self._get_uri(storage_name), rel_path
 
     @classmethod
-    def split_url(self, url: str) -> tuple[str, str]:
-        fill_path = url[len(self.PREFIX) :]
+    def split_url(cls, url: str) -> tuple[str, str]:
+        fill_path = url[len(cls.PREFIX) :]
         path_split = fill_path.split("/", 1)
         bucket = path_split[0]
         path = path_split[1] if len(path_split) > 1 else ""
@@ -229,14 +220,13 @@ class Client(ABC):
         finally:
             await result_queue.put(None)
 
+    async def _setup_fs(self) -> None:
+        pass
+
     async def _fetch_list(
         self, pointers: list[FilePointer], batch_size: int, result_queue: ResultQueue
     ) -> None:
-        """
-        This method is overridden in ClientS3 so that _setup_fs can be called there
-        """
-        if hasattr(self, "_setup_fs"):
-            await self._setup_fs()
+        await self._setup_fs()
 
         tasks = []
         for i, pointer in enumerate(pointers):
@@ -269,6 +259,7 @@ class Client(ABC):
                     found = True
 
                 if not hasattr(page, "__aiter__"):
+                    assert isinstance(page, Iterable)
                     tasks = self._process_page(
                         page,
                         glob_match=glob_match,
@@ -276,7 +267,7 @@ class Client(ABC):
                         result_queue=result_queue,
                     )
                 else:
-                    assert hasattr(self, "_process_page_async")
+                    assert isinstance(page, AsyncIterable)
                     tasks = await self._process_page_async(
                         page,
                         glob_match=glob_match,
@@ -293,7 +284,7 @@ class Client(ABC):
 
     def _process_page(
         self,
-        page: Iterable,
+        page: Iterable[dict[str, Any]],
         glob_match: Callable | None,
         modified_after: datetime | None,
         result_queue: ResultQueue,
@@ -308,6 +299,15 @@ class Client(ABC):
             )
             tasks.append(task)
         return tasks
+
+    async def _process_page_async(
+        self,
+        page: AsyncIterable,
+        glob_match: Callable | None,
+        modified_after: datetime | None,
+        result_queue: ResultQueue,
+    ) -> list[Any]:
+        raise ValueError("Async page processing is not supported for this filesystem")
 
     async def _concurrent_read_file(self, pointer: FilePointer) -> File:
         if not self._max_concurrent_reads:
@@ -345,7 +345,7 @@ class Client(ABC):
         return f"{self.PREFIX}{name}"
 
     def _rel_path(self, path: str) -> str:
-        return self.fs.split_path(path)[1]
+        return self.fs.split_path(path)[1]  # pyright: ignore[reportAttributeAccessIssue]
 
     def _get_full_path(self, rel_path: str, version_id: str | None = None) -> str:
         return self._version_path(f"{self.PREFIX}{self.name}/{rel_path}", version_id)

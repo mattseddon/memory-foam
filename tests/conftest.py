@@ -13,7 +13,7 @@ os.environ.setdefault("GCSFS_EXPERIMENTAL_ZB_HNS_SUPPORT", "false")
 class CommaSeparatedArgs(_AppendAction):
     def __call__(self, parser, namespace, values, option_string=None):
         items = getattr(namespace, self.dest) or []
-        items.extend(v for value in values.split(",") if (v := value.strip()))
+        items.extend(v for value in values.split(",") if (v := value.strip()))  # pyright: ignore[reportAttributeAccessIssue, reportOptionalMemberAccess]
         setattr(namespace, self.dest, list(dict.fromkeys(items)))
 
 
