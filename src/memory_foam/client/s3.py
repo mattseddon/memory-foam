@@ -15,7 +15,7 @@ class ClientS3(Client):
 
     @property
     def fs(self) -> S3FileSystem:
-        if not self._fs:
+        if self._fs is None:
             self._fs = self._create_s3_fs(
                 **self._fs_kwargs, asynchronous=True, loop=self._loop
             )

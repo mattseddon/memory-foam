@@ -14,7 +14,7 @@ def get_glob_match(
 
 
 def is_match(path: str, glob_match: Callable | None) -> bool:
-    if not glob_match:
+    if glob_match is None:
         return True
 
     return bool(glob_match(path))

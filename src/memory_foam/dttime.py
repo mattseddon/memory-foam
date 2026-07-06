@@ -7,7 +7,7 @@ def is_modified_after(
     get_last_modified: Callable[[dict], datetime],
     modified_after: datetime | None,
 ) -> bool:
-    if not modified_after:
+    if modified_after is None:
         return True
 
     return get_last_modified(info) > modified_after

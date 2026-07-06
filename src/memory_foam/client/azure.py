@@ -24,7 +24,7 @@ class AzureClient(Client):
 
     @property
     def fs(self) -> AzureBlobFileSystem:
-        if not self._fs:
+        if self._fs is None:
             self._fs = self._create_fs(
                 **self._fs_kwargs, asynchronous=True, loop=self._loop
             )

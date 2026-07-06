@@ -133,7 +133,7 @@ AFTER_FIXTURE_CUTOFF = (None, 0)
 
 
 def _update_after_fixture_cutoff(cutoff: datetime | None) -> datetime:
-    if not cutoff:
+    if cutoff is None:
         return datetime.now(utc)
     return cutoff
 
