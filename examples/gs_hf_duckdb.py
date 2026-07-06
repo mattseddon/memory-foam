@@ -1,4 +1,5 @@
 import random
+from collections.abc import Callable
 
 try:
     import os
@@ -12,7 +13,10 @@ try:
     import duckdb
     import open_clip
     from huggingface_hub import hf_hub_download
+    from open_clip.transform import Compose
     from PIL import Image
+    from torch import Tensor
+    from torch.nn import Module
     from tqdm.auto import tqdm
 
     from memory_foam import FilePointer, iter_files, iter_pointers
@@ -45,14 +49,37 @@ def setup_db():
         )
 
 
-def setup_embeddings_model():
+def setup_embeddings_model() -> Callable[[bytes], list]:
     for file in ["open_clip_config.json", "open_clip_model.safetensors"]:
         hf_hub_download("timm/vit_medium_patch16_clip_224.tinyclip_yfcc15m", file)
 
-    model, preprocess = open_clip.create_model_from_pretrained(
+    t = open_clip.create_model_from_pretrained(
         "hf-hub:timm/vit_medium_patch16_clip_224.tinyclip_yfcc15m"
     )
-    return model, preprocess
+    if not isinstance(t, tuple):
+        raise TypeError("expected create_model_from_pretrained to return a tuple")
+    model, preprocess = t
+
+    if not isinstance(model, Module):
+        raise TypeError("expected model to be a Module object")
+
+    create_embedding = model.encode_image
+    if not callable(create_embedding):
+        raise TypeError("expected create_embedding to be a callable")
+
+    if not isinstance(preprocess, Compose):
+        raise TypeError("expected preprocess to be a Compose object")
+
+    def process_image(contents: bytes) -> list:
+        image_file = _open_image(contents)
+        tensor = preprocess(image_file)
+        if not isinstance(tensor, Tensor):
+            raise TypeError("expected preprocess to return a Tensor")
+        img = tensor.unsqueeze(0)
+        emb = create_embedding(img).tolist()[0]
+        return emb
+
+    return process_image
 
 
 def _write_buffer(buffer: list[str]):
@@ -137,7 +164,7 @@ def setup_plot():
 
 
 setup_db()
-model, preprocess = setup_embeddings_model()
+process_image = setup_embeddings_model()
 
 buffer: list[str] = []
 uri = "gs://datachain-demo/dogs-and-cats/"
@@ -146,8 +173,7 @@ with tqdm(desc="Processing embeddings", unit=" files") as pbar:
     for pointer, contents in iter_files(
         uri, glob="*.jpg", client_config={"anon": True}
     ):
-        img = preprocess(_open_image(contents)).unsqueeze(0)
-        emb = model.encode_image(img).tolist()[0]
+        emb = process_image(contents)
         buffer = _process_buffer(buffer, pointer, emb)
         pbar.update(1)
 
